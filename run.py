@@ -47,15 +47,14 @@ def main() -> None:
     parser.add_argument("--headless", action="store_true", help="Run without the TUI dashboard.")
     args = parser.parse_args()
 
-    config = Config.load()
-
     if args.headless:
-        run_headless(config)
+        run_headless(Config.load())
     else:
+        # The TUI hub self-manages config, components, and the bot lifecycle, and
+        # opens even before secrets are set (so you can configure from the UI).
         from bot.tui import run_tui
 
-        audit, settings_store, ratelimiter, agent = build_components(config)
-        run_tui(config, audit, settings_store, ratelimiter, agent)
+        run_tui()
 
 
 if __name__ == "__main__":

@@ -68,17 +68,41 @@ Slash commands:
 
 ---
 
-## The TUI
+## The TUI — a full control hub
 
-Running `./setup.sh` (no args) opens a terminal dashboard:
+Running `./setup.sh` (no args) opens a terminal **control hub**. You manage the
+entire bot from here; after launch you never need to touch the shell. It opens
+even before you've set your tokens, so you can configure everything in-app.
 
-- **Status panel** — connection state, the logged-in bot user, and the servers it's in.
-- **Live audit feed** — every executed and refused action, with the *real* requester,
-  streamed as it happens (recent history is loaded on start).
+Three tabs:
 
-Keys: `q` quit, `c` clear the feed.
+**⬤ Dashboard**
+- **Start / Stop / Restart** the bot (buttons, or keys `s` / `x` / `r`). A fresh,
+  fully-configured bot is built on every start, so config edits apply on restart
+  without leaving the app.
+- **Status panel** — live run state, connection, logged-in user, guild list, and a
+  summary of the active config (model, rate limit, punitive, auto-update).
+- **Live audit feed** — every executed and refused action, with the *real*
+  requester, streamed as it happens (recent history loads on start).
 
-Prefer no UI? `./setup.sh --headless` logs the same events to the console.
+**⚙ Configure**
+- Edit **every** setting — Discord token, Anthropic key, model, max tokens,
+  agent iterations, rate limit + window, bulk-confirm threshold, punitive toggle,
+  and the auto-update options — then **Save to .env** (or **Save & restart bot**).
+  Secrets are masked; leaving a secret box blank keeps the existing value.
+
+**⛭ Maintenance**
+- **Install / Reinstall dependencies** (pip, into the active venv) with streamed output.
+- **Check for updates** — fetches the git upstream and shows how many commits behind you are.
+- **Update & restart** — fast-forward pull → reinstall deps → restart the bot.
+- **Auto-update** — when enabled (Configure tab), the hub periodically checks the
+  upstream and, if there are new commits, pulls and reinstalls automatically; with
+  **auto-restart** on, it restarts the bot to apply the update. Interval configurable.
+
+Keys: `s` start · `x` stop · `r` restart · `c` clear feed · `q` quit.
+
+Prefer no UI? `./setup.sh --headless` runs the bot with plain console logging and
+no hub (config comes straight from `.env`).
 
 ---
 
@@ -162,8 +186,10 @@ bot/
   colours.py       # name->hex map + validation
   audit.py         # logging to SQLite + Discord channel + live TUI feed
   ratelimit.py     # per-user sliding-window limits
-  config.py        # .env + per-guild settings (SQLite)
-  tui.py           # Textual dashboard
+  config.py        # .env (read + write) + per-guild settings (SQLite)
+  control.py       # bot lifecycle controller (start/stop/restart)
+  maintenance.py   # git + pip helpers (updates, (re)install), async & streamed
+  tui.py           # Textual control hub (dashboard / configure / maintenance)
 tests/
   test_permissions.py   # incl. the adversarial cases
   test_colours.py
@@ -191,6 +217,11 @@ and are set at runtime via slash commands.
 | `BULK_CONFIRM_THRESHOLD` | `3` | Writes-per-turn that trigger a confirmation |
 | `ENABLE_PUNITIVE` | `true` | Enable ban/kick/timeout (still typed-CONFIRM gated) |
 | `DB_PATH` | `moderator.db` | SQLite file for audit log + settings |
+| `AUTO_UPDATE` | `false` | Periodically pull + reinstall from the git upstream |
+| `AUTO_UPDATE_INTERVAL` | `30` | Minutes between update checks |
+| `AUTO_RESTART` | `false` | Restart the bot automatically after an auto-update |
+
+All of these are editable live from the TUI's **Configure** tab.
 
 Model choice affects parsing quality/UX, **not** security — the code enforces
 safety regardless of model.

@@ -17,7 +17,15 @@ from pathlib import Path
 
 from dotenv import load_dotenv
 
-load_dotenv()
+ENV_PATH = Path(".env")
+
+
+def reload_env() -> None:
+    """(Re)load .env into the process environment, overriding stale values."""
+    load_dotenv(ENV_PATH, override=True)
+
+
+reload_env()
 
 
 def _env(name: str, default: str | None = None) -> str | None:
@@ -33,6 +41,40 @@ def _env_int(name: str, default: int) -> int:
         return int(raw)
     except ValueError:
         return default
+
+
+def _env_bool(name: str, default: bool) -> bool:
+    raw = _env(name)
+    if raw is None:
+        return default
+    return raw.strip().lower() in ("1", "true", "yes", "on")
+
+
+def update_env_file(updates: dict[str, str], path: Path = ENV_PATH) -> None:
+    """Write key=value pairs into .env, updating existing keys in place and
+    appending new ones. Preserves comments and ordering. Creates the file (from
+    .env.example if present) if it doesn't exist yet.
+    """
+    if not path.exists():
+        example = Path(".env.example")
+        path.write_text(example.read_text() if example.exists() else "")
+
+    lines = path.read_text().splitlines()
+    remaining = dict(updates)
+
+    for i, line in enumerate(lines):
+        stripped = line.strip()
+        if not stripped or stripped.startswith("#") or "=" not in stripped:
+            continue
+        key = stripped.split("=", 1)[0].strip()
+        if key in remaining:
+            lines[i] = f"{key}={remaining.pop(key)}"
+
+    for key, value in remaining.items():
+        lines.append(f"{key}={value}")
+
+    path.write_text("\n".join(lines) + "\n")
+    reload_env()
 
 
 @dataclass
@@ -53,35 +95,46 @@ class Config:
     # Enable punitive tools (ban/kick/timeout) -- gated behind typed CONFIRM.
     enable_punitive: bool = True
     db_path: str = "moderator.db"
+    # Auto-update from GitHub.
+    auto_update: bool = False
+    auto_update_interval: int = 30  # minutes between update checks
+    auto_restart: bool = False      # restart the bot automatically after an update
+
+    def missing_secrets(self) -> list[str]:
+        out = []
+        if not self.discord_token or self.discord_token.startswith("your-"):
+            out.append("DISCORD_TOKEN")
+        if not self.anthropic_api_key or self.anthropic_api_key.startswith("sk-ant-your-"):
+            out.append("ANTHROPIC_API_KEY")
+        return out
 
     @classmethod
-    def load(cls) -> "Config":
+    def load(cls, require_secrets: bool = True) -> "Config":
+        reload_env()
         token = _env("DISCORD_TOKEN")
         key = _env("ANTHROPIC_API_KEY")
-        missing = [
-            n
-            for n, v in (("DISCORD_TOKEN", token), ("ANTHROPIC_API_KEY", key))
-            if not v
-        ]
-        if missing:
-            raise SystemExit(
-                "Missing required environment variables: "
-                + ", ".join(missing)
-                + ".\nCopy .env.example to .env and fill it in."
-            )
-        return cls(
-            discord_token=token,  # type: ignore[arg-type]
-            anthropic_api_key=key,  # type: ignore[arg-type]
+        config = cls(
+            discord_token=token or "",
+            anthropic_api_key=key or "",
             anthropic_model=_env("ANTHROPIC_MODEL", "claude-sonnet-5"),  # type: ignore[arg-type]
             max_tokens=_env_int("MAX_TOKENS", 2048),
             max_agent_iterations=_env_int("MAX_AGENT_ITERATIONS", 8),
             rate_limit_max=_env_int("RATE_LIMIT_MAX", 5),
             rate_limit_window=_env_int("RATE_LIMIT_WINDOW", 60),
             bulk_confirm_threshold=_env_int("BULK_CONFIRM_THRESHOLD", 3),
-            enable_punitive=(_env("ENABLE_PUNITIVE", "true") or "true").lower()
-            in ("1", "true", "yes", "on"),
+            enable_punitive=_env_bool("ENABLE_PUNITIVE", True),
             db_path=_env("DB_PATH", "moderator.db"),  # type: ignore[arg-type]
+            auto_update=_env_bool("AUTO_UPDATE", False),
+            auto_update_interval=_env_int("AUTO_UPDATE_INTERVAL", 30),
+            auto_restart=_env_bool("AUTO_RESTART", False),
         )
+        if require_secrets and config.missing_secrets():
+            raise SystemExit(
+                "Missing required environment variables: "
+                + ", ".join(config.missing_secrets())
+                + ".\nCopy .env.example to .env and fill it in (or use the TUI's Configure tab)."
+            )
+        return config
 
 
 @dataclass

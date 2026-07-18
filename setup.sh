@@ -3,8 +3,9 @@
 #
 #   ./setup.sh            # install everything, then launch the TUI
 #   ./setup.sh --headless # install everything, then run without the TUI
-#   ./setup.sh --install  # install everything and stop (don't launch)
-#   ./setup.sh --test     # install everything, then run the unit tests
+#   ./setup.sh --install   # install everything and stop (don't launch)
+#   ./setup.sh --reinstall # force-reinstall all dependencies
+#   ./setup.sh --test      # install everything, then run the unit tests
 #
 # It creates a local virtualenv (.venv), installs dependencies, ensures a .env
 # exists, and runs the bot. Re-running is safe and fast.
@@ -53,6 +54,10 @@ MODE="${1:-tui}"
 case "$MODE" in
   --install|install)
     info "Install complete. Edit .env, then run: ./setup.sh"
+    ;;
+  --reinstall|reinstall)
+    info "Force-reinstalling dependencies"
+    python -m pip install --force-reinstall --no-cache-dir -r requirements.txt
     ;;
   --test|test)
     info "Running unit tests"
