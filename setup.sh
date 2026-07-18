@@ -46,7 +46,7 @@ python -m pip install -r requirements.txt
 # --- 4. .env ----------------------------------------------------------------
 if [ ! -f .env ]; then
   cp .env.example .env
-  warn "Created .env from .env.example — edit it and add DISCORD_TOKEN and ANTHROPIC_API_KEY."
+  warn "Created .env from .env.example — set DISCORD_TOKEN and your OPENAI_API_KEY / OPENAI_BASE_URL / OPENAI_MODEL (or do it in the TUI's Configure tab)."
 fi
 
 # --- 5. Dispatch ------------------------------------------------------------
@@ -69,7 +69,7 @@ case "$MODE" in
     ;;
   *)
     if grep -q "your-discord-bot-token-here" .env 2>/dev/null; then
-      die "Fill in DISCORD_TOKEN and ANTHROPIC_API_KEY in .env before launching."
+      die "Fill in DISCORD_TOKEN and your OpenAI-compatible API key/endpoint/model in .env (or use the TUI's Configure tab) before launching."
     fi
     info "Launching TUI dashboard (press q to quit)"
     exec python run.py

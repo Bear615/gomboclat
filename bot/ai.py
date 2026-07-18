@@ -1,4 +1,9 @@
-"""The AI layer: Anthropic client, tool schemas, and the agentic loop.
+"""The AI layer: OpenAI-compatible client, tool schemas, and the agentic loop.
+
+The bot talks to the model over the OpenAI chat-completions API. That protocol is
+spoken by OpenAI itself and by a large ecosystem of compatible servers (OpenRouter,
+Together, Groq, LM Studio, Ollama, vLLM, LiteLLM, ...), so you bring your own
+endpoint, model, and key -- all configured from the TUI and stored in ``.env``.
 
 REMEMBER THE ARCHITECTURE: the model's only job is natural language -> a typed
 action request (which tool, which arguments). It is NOT a security boundary. Every
@@ -13,9 +18,10 @@ instruction. This is defence in depth; the code checks are the real backstop.
 
 from __future__ import annotations
 
+import json
 from typing import Any
 
-from anthropic import AsyncAnthropic
+from openai import AsyncOpenAI
 
 from . import tools
 from .config import Config
@@ -207,6 +213,25 @@ def tool_schemas(enable_punitive: bool) -> list[dict[str, Any]]:
     return schemas
 
 
+def openai_tools(enable_punitive: bool) -> list[dict[str, Any]]:
+    """The same tool set, shaped for the OpenAI chat-completions ``tools`` param.
+
+    OpenAI wraps each schema as ``{"type": "function", "function": {...}}`` and
+    calls the JSON schema ``parameters`` (Anthropic calls it ``input_schema``).
+    """
+    return [
+        {
+            "type": "function",
+            "function": {
+                "name": s["name"],
+                "description": s["description"],
+                "parameters": s["input_schema"],
+            },
+        }
+        for s in tool_schemas(enable_punitive)
+    ]
+
+
 SYSTEM_PROMPT = """\
 You are the assistant brain of a Discord moderation bot. Server members address you in \
 plain English and you carry out moderation-style requests (roles, channels, nicknames, \
@@ -247,8 +272,13 @@ STYLE
 class Agent:
     def __init__(self, config: Config):
         self.config = config
-        self.client = AsyncAnthropic(api_key=config.anthropic_api_key)
-        self.schemas = tool_schemas(config.enable_punitive)
+        # ``api_key`` may be a placeholder for keyless local endpoints (Ollama,
+        # LM Studio, ...), but the SDK still requires a non-empty string.
+        self.client = AsyncOpenAI(
+            api_key=config.api_key or "not-needed",
+            base_url=config.api_base_url or None,
+        )
+        self.schemas = openai_tools(config.enable_punitive)
 
     def _initial_user_turn(self, ctx: ToolContext, text: str) -> str:
         rc = ctx.request_context()
@@ -276,58 +306,84 @@ class Agent:
         except Exception as e:  # never crash the loop on an executor error
             return f"Error running {name}: {e}"
 
+    @staticmethod
+    def _parse_args(raw: str | None) -> dict[str, Any]:
+        """Decode a tool call's JSON arguments, tolerating empty/garbled output."""
+        if not raw:
+            return {}
+        try:
+            parsed = json.loads(raw)
+        except json.JSONDecodeError:
+            return {}
+        return parsed if isinstance(parsed, dict) else {}
+
     async def run(self, ctx: ToolContext, text: str) -> tuple[str, list[str]]:
         """Run the agentic loop. Returns (final assistant text, list of tool outcomes)."""
         messages: list[dict[str, Any]] = [
-            {"role": "user", "content": self._initial_user_turn(ctx, text)}
+            {"role": "system", "content": SYSTEM_PROMPT},
+            {"role": "user", "content": self._initial_user_turn(ctx, text)},
         ]
         outcomes: list[str] = []
         final_text_parts: list[str] = []
 
         for _ in range(self.config.max_agent_iterations):
-            resp = await self.client.messages.create(
-                model=self.config.anthropic_model,
+            resp = await self.client.chat.completions.create(
+                model=self.config.model,
                 max_tokens=self.config.max_tokens,
-                system=SYSTEM_PROMPT,
-                tools=self.schemas,
                 messages=messages,
+                tools=self.schemas,
+                tool_choice="auto",
             )
 
-            tool_uses = [b for b in resp.content if b.type == "tool_use"]
-            for b in resp.content:
-                if b.type == "text" and b.text.strip():
-                    final_text_parts.append(b.text.strip())
+            msg = resp.choices[0].message
+            tool_calls = msg.tool_calls or []
+            if msg.content and msg.content.strip():
+                final_text_parts.append(msg.content.strip())
 
-            if resp.stop_reason != "tool_use" or not tool_uses:
+            if not tool_calls:
                 break
+
+            # Decode every call up front so we can reason about the batch.
+            calls = [(tc, tc.function.name, self._parse_args(tc.function.arguments)) for tc in tool_calls]
 
             # Bulk-confirmation gate: if a single turn proposes many write actions,
             # confirm once before executing any of them.
-            write_uses = [b for b in tool_uses if b.name in WRITE_TOOLS and b.name not in PUNITIVE_TOOLS]
+            write_calls = [
+                (name, args) for _, name, args in calls if name in WRITE_TOOLS and name not in PUNITIVE_TOOLS
+            ]
             skip_writes = False
-            if len(write_uses) >= self.config.bulk_confirm_threshold:
+            if len(write_calls) >= self.config.bulk_confirm_threshold:
                 summary = "I'm about to run several changes:\n" + "\n".join(
-                    f"  • {b.name}({', '.join(f'{k}={v!r}' for k, v in b.input.items())})" for b in write_uses
+                    f"  • {name}({', '.join(f'{k}={v!r}' for k, v in args.items())})" for name, args in write_calls
                 )
                 ok = await ctx.confirm(summary + "\n\nReply `yes` to proceed.")
                 if not ok:
                     skip_writes = True
 
-            # Append the assistant turn verbatim, then all tool_results in one user turn.
-            messages.append({"role": "assistant", "content": [b.model_dump() for b in resp.content]})
+            # Append the assistant turn verbatim, then one tool message per call.
+            messages.append(
+                {
+                    "role": "assistant",
+                    "content": msg.content or "",
+                    "tool_calls": [
+                        {
+                            "id": tc.id,
+                            "type": "function",
+                            "function": {"name": tc.function.name, "arguments": tc.function.arguments or "{}"},
+                        }
+                        for tc in tool_calls
+                    ],
+                }
+            )
 
-            tool_results = []
-            for b in tool_uses:
-                if skip_writes and b.name in WRITE_TOOLS and b.name not in PUNITIVE_TOOLS:
+            for tc, name, args in calls:
+                if skip_writes and name in WRITE_TOOLS and name not in PUNITIVE_TOOLS:
                     result = "Cancelled — the requester did not confirm this batch of changes."
                 else:
-                    result = await self._dispatch(ctx, b.name, dict(b.input))
-                    if b.name in DISPATCH:
+                    result = await self._dispatch(ctx, name, args)
+                    if name in DISPATCH:
                         outcomes.append(result)
-                tool_results.append(
-                    {"type": "tool_result", "tool_use_id": b.id, "content": result}
-                )
-            messages.append({"role": "user", "content": tool_results})
+                messages.append({"role": "tool", "tool_call_id": tc.id, "content": result})
 
         final_text = "\n\n".join(final_text_parts).strip()
         return final_text, outcomes

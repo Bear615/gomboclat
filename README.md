@@ -21,9 +21,19 @@ setup script for Linux.
 ```bash
 git clone <this-repo> && cd gomboclat
 ./setup.sh --install        # create venv + install deps + make .env
-$EDITOR .env                # add DISCORD_TOKEN and ANTHROPIC_API_KEY
-./setup.sh                  # launch the TUI dashboard
+./setup.sh                  # launch the TUI dashboard, then configure it in-app
 ```
+
+The bot talks to the model over the **OpenAI-compatible** chat-completions API,
+so you bring your own **endpoint**, **model**, and **key**. Set them in the TUI's
+**Configure** tab (it writes `.env` for you), or edit `.env` directly:
+
+```bash
+$EDITOR .env                # set DISCORD_TOKEN, OPENAI_BASE_URL, OPENAI_API_KEY, OPENAI_MODEL
+```
+
+Point `OPENAI_BASE_URL` at OpenAI itself, or at any compatible server —
+OpenRouter, Together, Groq, LM Studio, Ollama, vLLM, LiteLLM, and friends.
 
 Other modes:
 
@@ -86,10 +96,11 @@ Three tabs:
   requester, streamed as it happens (recent history loads on start).
 
 **⚙ Configure**
-- Edit **every** setting — Discord token, Anthropic key, model, max tokens,
-  agent iterations, rate limit + window, bulk-confirm threshold, punitive toggle,
-  and the auto-update options — then **Save to .env** (or **Save & restart bot**).
-  Secrets are masked; leaving a secret box blank keeps the existing value.
+- Edit **every** setting — Discord token, your **API endpoint** (base URL),
+  **API key**, and **model** (OpenAI style), max tokens, agent iterations, rate
+  limit + window, bulk-confirm threshold, punitive toggle, and the auto-update
+  options — then **Save to .env** (or **Save & restart bot**). Secrets are masked;
+  leaving a secret box blank keeps the existing value.
 
 **⛭ Maintenance**
 - **Install / Reinstall dependencies** (pip, into the active venv) with streamed output.
@@ -180,7 +191,7 @@ Failures are refused with a short, friendly explanation and logged.
 ```
 bot/
   main.py          # Discord client, addressing, confirmation flow, slash commands
-  ai.py            # Anthropic client + agentic loop + tool schemas
+  ai.py            # OpenAI-compatible client + agentic loop + tool schemas
   tools.py         # executor functions (thin wrappers over discord.py)
   permissions.py   # the validation layer — pure, unit-tested, no Discord I/O
   colours.py       # name->hex map + validation
@@ -210,8 +221,9 @@ and are set at runtime via slash commands.
 | Variable | Default | Meaning |
 | --- | --- | --- |
 | `DISCORD_TOKEN` | — | Bot token (required) |
-| `ANTHROPIC_API_KEY` | — | Anthropic key (required) |
-| `ANTHROPIC_MODEL` | `claude-sonnet-5` | Parser model; swap to `claude-haiku-4-5-20251001` for lower cost |
+| `OPENAI_API_KEY` | — | API key for your endpoint (required; any placeholder for keyless local servers) |
+| `OPENAI_BASE_URL` | `https://api.openai.com/v1` | OpenAI-compatible endpoint (OpenRouter, Groq, LM Studio, Ollama, vLLM, …) |
+| `OPENAI_MODEL` | `gpt-4o-mini` | Parser model — any model your endpoint serves |
 | `RATE_LIMIT_MAX` | `5` | Write actions per window per user |
 | `RATE_LIMIT_WINDOW` | `60` | Rate-limit window (seconds) |
 | `BULK_CONFIRM_THRESHOLD` | `3` | Writes-per-turn that trigger a confirmation |

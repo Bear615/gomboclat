@@ -177,7 +177,7 @@ def create_bot(
         me = interaction.guild.me
         await interaction.response.send_message(
             f"**AI Moderator status**\n"
-            f"• Model: `{config.anthropic_model}`\n"
+            f"• Model: `{config.model}`\n"
             f"• Log channel: {log_ch.mention if log_ch else '_not set_ (use /setlogchannel)'}\n"
             f"• Rate limit: {limit} write actions / {config.rate_limit_window}s per user\n"
             f"• Punitive tools: {'enabled (typed CONFIRM required)' if config.enable_punitive else 'disabled'}\n"

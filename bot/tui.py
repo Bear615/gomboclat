@@ -136,12 +136,16 @@ class ModeratorHub(App):
     def _compose_configure(self) -> ComposeResult:
         with VerticalScroll():
             with Vertical(classes="section", id="sec-secrets"):
-                yield from self._field("Discord token", Input(password=True, id="cfg-discord_token"))
-                yield from self._field("Anthropic API key", Input(password=True, id="cfg-anthropic_api_key"))
-            with Vertical(classes="section", id="sec-model"):
+                yield from self._field("Discord bot token", Input(password=True, id="cfg-discord_token"))
+            with Vertical(classes="section", id="sec-llm"):
                 yield from self._field(
-                    "Model (claude-sonnet-5 / claude-haiku-4-5-20251001)",
-                    Input(id="cfg-anthropic_model"),
+                    "API endpoint (base URL)",
+                    Input(placeholder="https://api.openai.com/v1", id="cfg-api_base_url"),
+                )
+                yield from self._field("API key", Input(password=True, id="cfg-api_key"))
+                yield from self._field(
+                    "Model",
+                    Input(placeholder="gpt-4o-mini", id="cfg-model"),
                 )
                 yield from self._field("Max tokens", Input(id="cfg-max_tokens"))
                 yield from self._field("Max agent iterations", Input(id="cfg-max_agent_iterations"))
@@ -183,7 +187,7 @@ class ModeratorHub(App):
         # Section titles.
         titles = {
             "sec-secrets": "Secrets",
-            "sec-model": "Model",
+            "sec-llm": "LLM (OpenAI-compatible)",
             "sec-limits": "Limits & safety",
             "sec-update": "Auto-update",
         }
@@ -315,18 +319,23 @@ class ModeratorHub(App):
     # ------------------------------------------------------------------ #
 
     _INPUT_FIELDS = [
-        "discord_token", "anthropic_api_key", "anthropic_model", "max_tokens",
+        "discord_token", "api_base_url", "api_key", "model", "max_tokens",
         "max_agent_iterations", "rate_limit_max", "rate_limit_window",
         "bulk_confirm_threshold", "auto_update_interval",
     ]
     _SWITCH_FIELDS = ["enable_punitive", "auto_update", "auto_restart"]
+    # Masked secrets: never pre-fill the box from a live value, and never
+    # overwrite the stored value when the box is left blank.
+    _SECRET_FIELDS = ["discord_token", "api_key"]
 
     def _populate_config_form(self) -> None:
         c = self.config
+        missing = c.missing_secrets()
         values = {
-            "discord_token": "" if c.missing_secrets() and "DISCORD_TOKEN" in c.missing_secrets() else c.discord_token,
-            "anthropic_api_key": "" if "ANTHROPIC_API_KEY" in c.missing_secrets() else c.anthropic_api_key,
-            "anthropic_model": c.anthropic_model,
+            "discord_token": "" if "DISCORD_TOKEN" in missing else c.discord_token,
+            "api_base_url": c.api_base_url,
+            "api_key": "" if "OPENAI_API_KEY" in missing else c.api_key,
+            "model": c.model,
             "max_tokens": str(c.max_tokens),
             "max_agent_iterations": str(c.max_agent_iterations),
             "rate_limit_max": str(c.rate_limit_max),
@@ -343,8 +352,9 @@ class ModeratorHub(App):
     def _save_config(self, restart: bool) -> None:
         env_map = {
             "discord_token": "DISCORD_TOKEN",
-            "anthropic_api_key": "ANTHROPIC_API_KEY",
-            "anthropic_model": "ANTHROPIC_MODEL",
+            "api_base_url": "OPENAI_BASE_URL",
+            "api_key": "OPENAI_API_KEY",
+            "model": "OPENAI_MODEL",
             "max_tokens": "MAX_TOKENS",
             "max_agent_iterations": "MAX_AGENT_ITERATIONS",
             "rate_limit_max": "RATE_LIMIT_MAX",
@@ -355,7 +365,7 @@ class ModeratorHub(App):
         updates: dict[str, str] = {}
         for field, key in env_map.items():
             val = self.query_one(f"#cfg-{field}", Input).value.strip()
-            if field in ("discord_token", "anthropic_api_key") and not val:
+            if field in self._SECRET_FIELDS and not val:
                 continue  # don't wipe a secret with an empty box
             updates[key] = val
         updates["ENABLE_PUNITIVE"] = str(self.query_one("#cfg-enable_punitive", Switch).value).lower()
@@ -500,7 +510,7 @@ class StatusPanel(Static):
             f"  Guilds  : {len(guilds)}",
             "",
             "[b]Config[/b]",
-            f"  Model   : {config.anthropic_model}",
+            f"  Model   : {config.model}",
             f"  Rate    : {config.rate_limit_max} / {config.rate_limit_window}s",
             f"  Punitive: {'on (typed CONFIRM)' if config.enable_punitive else 'off'}",
             f"  Updates : {auto}",
