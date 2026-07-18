@@ -1,0 +1,7 @@
+discord.py>=2.6,<3
+anthropic>=0.45
+python-dotenv>=1.0
+textual>=0.80
+rich>=13
+# dev / tests
+pytest>=8.0
