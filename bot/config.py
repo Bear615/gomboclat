@@ -82,9 +82,12 @@ class Config:
     """Global, process-wide configuration loaded once at startup."""
 
     discord_token: str
-    anthropic_api_key: str
-    # Default model is Sonnet; swap to claude-haiku-4-5-20251001 via env to cut cost.
-    anthropic_model: str = "claude-sonnet-5"
+    # The LLM is spoken to over the OpenAI-compatible chat-completions API, so you
+    # can point it at OpenAI, or ANY compatible server -- OpenRouter, Together,
+    # Groq, LM Studio, Ollama, vLLM, LiteLLM, ... -- by setting your own endpoint.
+    api_key: str
+    api_base_url: str = "https://api.openai.com/v1"
+    model: str = "gpt-4o-mini"
     max_tokens: int = 2048
     max_agent_iterations: int = 8
     # Per-user write-action rate limit (default; overridable per guild).
@@ -104,19 +107,20 @@ class Config:
         out = []
         if not self.discord_token or self.discord_token.startswith("your-"):
             out.append("DISCORD_TOKEN")
-        if not self.anthropic_api_key or self.anthropic_api_key.startswith("sk-ant-your-"):
-            out.append("ANTHROPIC_API_KEY")
+        if not self.api_key or self.api_key.startswith("your-"):
+            out.append("OPENAI_API_KEY")
         return out
 
     @classmethod
     def load(cls, require_secrets: bool = True) -> "Config":
         reload_env()
         token = _env("DISCORD_TOKEN")
-        key = _env("ANTHROPIC_API_KEY")
+        key = _env("OPENAI_API_KEY")
         config = cls(
             discord_token=token or "",
-            anthropic_api_key=key or "",
-            anthropic_model=_env("ANTHROPIC_MODEL", "claude-sonnet-5"),  # type: ignore[arg-type]
+            api_key=key or "",
+            api_base_url=_env("OPENAI_BASE_URL", "https://api.openai.com/v1"),  # type: ignore[arg-type]
+            model=_env("OPENAI_MODEL", "gpt-4o-mini"),  # type: ignore[arg-type]
             max_tokens=_env_int("MAX_TOKENS", 2048),
             max_agent_iterations=_env_int("MAX_AGENT_ITERATIONS", 8),
             rate_limit_max=_env_int("RATE_LIMIT_MAX", 5),
