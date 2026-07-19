@@ -97,7 +97,14 @@ def create_bot(
         if message.author.bot or bot.user is None:
             return
         if message.guild is None:
-            return  # only operate in guilds
+            # DMs can't touch a server, but silence is confusing — nudge instead.
+            await _reply(
+                message,
+                "👋 I work **inside a server**, where I can see its roles and channels. "
+                "Mention me there and tell me what you'd like — e.g. *“give me a purple role”*. "
+                "Run `/help` in the server for the full rundown.",
+            )
+            return
         if bot.user not in message.mentions:
             return  # addressed only via @mention
 
@@ -107,7 +114,12 @@ def create_bot(
 
         text = _strip_mentions(message, bot.user)
         if not text:
-            await _reply(message, "Hi! Tell me what you'd like — e.g. *“give me a purple role”*.")
+            await _reply(
+                message,
+                "Hi! Tell me what you'd like — e.g. *“give me a purple role”* or "
+                "*“make a role that can only see #secret-lab and give it to me”*. "
+                "Run `/help` to see everything I can do.",
+            )
             return
 
         hooks.on_message_seen and hooks.on_message_seen(
@@ -136,13 +148,19 @@ def create_bot(
             log_channel=log_channel,
         )
 
+        acked = await _react(message, "👀")  # visible "I'm on it" while thinking
         try:
             async with message.channel.typing():
                 reply_text, outcomes = await agent.run(ctx, text)
         except Exception as e:
+            await _unreact(message, "👀", acked)
+            await _react(message, "⚠️")
             await _reply(message, f"Something went wrong while handling that: `{e}`")
             hooks.status(f"Error handling message: {e}")
             return
+
+        await _unreact(message, "👀", acked)
+        await _react(message, "✅")
 
         body = reply_text
         if not body:
@@ -153,14 +171,8 @@ def create_bot(
     @bot.tree.command(name="setlogchannel", description="Set the channel where moderation actions are logged.")
     @app_commands.describe(channel="The text channel to send audit logs to (leave empty to use this one).")
     async def setlogchannel(interaction: discord.Interaction, channel: discord.TextChannel | None = None) -> None:
-        if interaction.guild is None:
-            await interaction.response.send_message("Guild only.", ephemeral=True)
-            return
-        member = interaction.user
-        if not isinstance(member, discord.Member) or not member.guild_permissions.manage_guild:
-            await interaction.response.send_message(
-                "You need the **Manage Server** permission to set the log channel.", ephemeral=True
-            )
+        if not _require_manage_guild(interaction):
+            await _deny(interaction)
             return
         target = channel or interaction.channel
         settings_store.set_log_channel(interaction.guild.id, target.id)
@@ -174,19 +186,144 @@ def create_bot(
         s = settings_store.get(interaction.guild.id)
         log_ch = interaction.guild.get_channel(s.log_channel_id) if s.log_channel_id else None
         limit = s.rate_limit_max or config.rate_limit_max
+        limit_note = "" if s.rate_limit_max is None else " (server override)"
         me = interaction.guild.me
         await interaction.response.send_message(
             f"**AI Moderator status**\n"
+            f"• Active here: {'✅ yes' if s.enabled else '⏸️ disabled (use /togglebot)'}\n"
             f"• Model: `{config.anthropic_model}`\n"
             f"• Log channel: {log_ch.mention if log_ch else '_not set_ (use /setlogchannel)'}\n"
-            f"• Rate limit: {limit} write actions / {config.rate_limit_window}s per user\n"
+            f"• Rate limit: {limit} write actions / {config.rate_limit_window}s per user{limit_note}\n"
+            f"• Bulk-confirm threshold: {config.bulk_confirm_threshold} writes/turn\n"
             f"• Punitive tools: {'enabled (typed CONFIRM required)' if config.enable_punitive else 'disabled'}\n"
             f"• My top role position: {me.top_role.position}\n"
-            f"Mention me and describe what you'd like.",
+            f"Mention me and describe what you'd like, or run `/help`.",
             ephemeral=True,
         )
 
+    # -- slash command: friendly help -------------------------------------- #
+    @bot.tree.command(name="help", description="Show what the AI moderator can do, with examples.")
+    async def help_command(interaction: discord.Interaction) -> None:
+        embed = discord.Embed(
+            title="🤖 AI Moderator — help",
+            description=(
+                "Mention me and describe what you want in plain English. I only act when "
+                "**@mentioned**, and every change is re-checked against *your* real Discord "
+                "permissions before it happens — I can't let you do anything you couldn't do yourself."
+            ),
+            colour=discord.Colour.blurple(),
+        )
+        embed.add_field(
+            name="Examples",
+            value=(
+                "• `@AI Moderator give me a purple role`\n"
+                "• `@AI Moderator make a role that can only see #secret-lab and give it to me`\n"
+                "• `@AI Moderator rename Dave to \"On Vacation\"`\n"
+                "• `@AI Moderator create a voice channel called Lounge`"
+            ),
+            inline=False,
+        )
+        embed.add_field(
+            name="What I can do",
+            value=(
+                "Create/assign/remove roles · set role colours · create channels & categories · "
+                "scope channel access · change nicknames. With confirmation: kick / ban / timeout."
+            ),
+            inline=False,
+        )
+        embed.add_field(
+            name="Slash commands",
+            value=(
+                "`/help` — this message\n"
+                "`/modstatus` — current settings\n"
+                "`/setlogchannel` — where audit logs go *(Manage Server)*\n"
+                "`/setratelimit` — writes allowed per user *(Manage Server)*\n"
+                "`/togglebot` — enable/disable me here *(Manage Server)*\n"
+                "`/auditlog` — recent actions *(Manage Server)*"
+            ),
+            inline=False,
+        )
+        embed.set_footer(text="I parse intent; Python enforces permissions. The model is not a security boundary.")
+        await interaction.response.send_message(embed=embed, ephemeral=True)
+
+    # -- slash command: per-guild rate limit ------------------------------- #
+    @bot.tree.command(name="setratelimit", description="Set how many write actions each user may run per window.")
+    @app_commands.describe(max_actions="Writes allowed per user per window. Leave empty to reset to the default.")
+    async def setratelimit(
+        interaction: discord.Interaction,
+        max_actions: app_commands.Range[int, 1, 100] | None = None,
+    ) -> None:
+        if not _require_manage_guild(interaction):
+            await _deny(interaction)
+            return
+        settings_store.set_rate_limit(interaction.guild.id, max_actions)  # type: ignore[union-attr]
+        if max_actions is None:
+            await interaction.response.send_message(
+                f"✅ Rate limit reset to the default ({config.rate_limit_max} / {config.rate_limit_window}s).",
+                ephemeral=True,
+            )
+        else:
+            await interaction.response.send_message(
+                f"✅ Rate limit set to **{max_actions}** write actions / {config.rate_limit_window}s per user.",
+                ephemeral=True,
+            )
+
+    # -- slash command: enable/disable in this guild ----------------------- #
+    @bot.tree.command(name="togglebot", description="Enable or disable the AI moderator in this server.")
+    async def togglebot(interaction: discord.Interaction) -> None:
+        if not _require_manage_guild(interaction):
+            await _deny(interaction)
+            return
+        current = settings_store.get(interaction.guild.id)  # type: ignore[union-attr]
+        new_state = not current.enabled
+        settings_store.set_enabled(interaction.guild.id, new_state)  # type: ignore[union-attr]
+        await interaction.response.send_message(
+            f"{'✅ I’m now **active**' if new_state else '⏸️ I’m now **disabled**'} in this server."
+            + ("" if new_state else " Mentions will be ignored until you re-enable me."),
+            ephemeral=True,
+        )
+
+    # -- slash command: recent audit log ----------------------------------- #
+    @bot.tree.command(name="auditlog", description="Show the most recent moderation actions in this server.")
+    @app_commands.describe(limit="How many recent entries to show (1–25, default 10).")
+    async def auditlog(
+        interaction: discord.Interaction,
+        limit: app_commands.Range[int, 1, 25] = 10,
+    ) -> None:
+        if not _require_manage_guild(interaction):
+            await _deny(interaction)
+            return
+        records = audit.recent_for_guild(interaction.guild.id, limit)  # type: ignore[union-attr]
+        if not records:
+            await interaction.response.send_message("No moderation actions logged here yet.", ephemeral=True)
+            return
+        lines = []
+        for r in records:  # newest first
+            mark = "✅" if r.allowed else "⛔"
+            ts = r.timestamp[:19].replace("T", " ")
+            lines.append(f"{mark} `{ts}` **{r.action}** by {r.requester_name} — {r.outcome}")
+        body = "\n".join(lines)
+        if len(body) > 1900:
+            body = body[:1900] + "\n…"
+        await interaction.response.send_message(
+            f"**Last {len(records)} action(s):**\n{body}", ephemeral=True
+        )
+
     return bot
+
+
+def _require_manage_guild(interaction: discord.Interaction) -> bool:
+    """True only if this is a guild interaction by a member with Manage Server."""
+    if interaction.guild is None:
+        return False
+    member = interaction.user
+    return isinstance(member, discord.Member) and member.guild_permissions.manage_guild
+
+
+async def _deny(interaction: discord.Interaction) -> None:
+    await interaction.response.send_message(
+        "You need the **Manage Server** permission to use that command.", ephemeral=True
+    )
 
 
 async def _reply(message: discord.Message, text: str) -> None:
@@ -205,3 +342,22 @@ async def _reply(message: discord.Message, text: str) -> None:
 
 def _chunks(text: str, size: int) -> list[str]:
     return [text[i : i + size] for i in range(0, len(text), size)] or [""]
+
+
+async def _react(message: discord.Message, emoji: str) -> bool:
+    """Best-effort reaction. Returns True if it landed (so we can remove it later)."""
+    try:
+        await message.add_reaction(emoji)
+        return True
+    except discord.HTTPException:
+        return False
+
+
+async def _unreact(message: discord.Message, emoji: str, added: bool) -> None:
+    """Remove a reaction we added earlier; silent if we can't."""
+    if not added or message.guild is None or message.guild.me is None:
+        return
+    try:
+        await message.remove_reaction(emoji, message.guild.me)
+    except discord.HTTPException:
+        pass

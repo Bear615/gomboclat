@@ -212,3 +212,15 @@ class GuildSettingsStore:
         current = self.get(guild_id)
         current.log_channel_id = channel_id
         self.upsert(current)
+
+    def set_rate_limit(self, guild_id: int, rate_limit_max: int | None) -> None:
+        """Set this guild's per-user write rate limit (None -> use the global default)."""
+        current = self.get(guild_id)
+        current.rate_limit_max = rate_limit_max
+        self.upsert(current)
+
+    def set_enabled(self, guild_id: int, enabled: bool) -> None:
+        """Enable or disable the bot in a single guild without touching others."""
+        current = self.get(guild_id)
+        current.enabled = enabled
+        self.upsert(current)

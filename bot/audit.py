@@ -79,6 +79,10 @@ class AuditLogger:
                 )
                 """
             )
+            # Speeds up per-guild history reads (the /auditlog command and TUI).
+            self._conn.execute(
+                "CREATE INDEX IF NOT EXISTS idx_audit_guild ON audit_log (guild_id, id DESC)"
+            )
             self._conn.commit()
 
     # --- live subscription (used by the TUI) ------------------------------- #
@@ -120,29 +124,37 @@ class AuditLogger:
             )
             self._conn.commit()
 
+    @staticmethod
+    def _row_to_record(r: "sqlite3.Row") -> AuditRecord:
+        return AuditRecord(
+            timestamp=r["timestamp"],
+            guild_id=r["guild_id"],
+            guild_name=r["guild_name"],
+            requester_id=r["requester_id"],
+            requester_name=r["requester_name"],
+            raw_message=r["raw_message"],
+            action=r["action"],
+            arguments=json.loads(r["arguments"] or "{}"),
+            validation=r["validation"],
+            allowed=bool(r["allowed"]),
+            outcome=r["outcome"],
+        )
+
     def recent(self, limit: int = 50) -> list[AuditRecord]:
         with self._lock:
             rows = self._conn.execute(
                 "SELECT * FROM audit_log ORDER BY id DESC LIMIT ?", (limit,)
             ).fetchall()
-        out: list[AuditRecord] = []
-        for r in rows:
-            out.append(
-                AuditRecord(
-                    timestamp=r["timestamp"],
-                    guild_id=r["guild_id"],
-                    guild_name=r["guild_name"],
-                    requester_id=r["requester_id"],
-                    requester_name=r["requester_name"],
-                    raw_message=r["raw_message"],
-                    action=r["action"],
-                    arguments=json.loads(r["arguments"] or "{}"),
-                    validation=r["validation"],
-                    allowed=bool(r["allowed"]),
-                    outcome=r["outcome"],
-                )
-            )
-        return out
+        return [self._row_to_record(r) for r in rows]
+
+    def recent_for_guild(self, guild_id: int, limit: int = 20) -> list[AuditRecord]:
+        """Most-recent audit records for a single guild, newest first."""
+        with self._lock:
+            rows = self._conn.execute(
+                "SELECT * FROM audit_log WHERE guild_id = ? ORDER BY id DESC LIMIT ?",
+                (guild_id, limit),
+            ).fetchall()
+        return [self._row_to_record(r) for r in rows]
 
     # --- the main entry point --------------------------------------------- #
 
