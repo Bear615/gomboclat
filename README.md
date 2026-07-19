@@ -134,6 +134,58 @@ no hub (config comes straight from `.env`).
 
 ---
 
+## The web UI — the same hub, in your browser
+
+`./setup.sh --web` runs a browser twin of the TUI: the same Dashboard
+(start/stop/restart + live audit feed), Configure (edit every `.env` setting),
+and Maintenance (deps, update & restart) tabs, served over HTTP. It binds to
+**localhost only** — the internet is meant to reach it through nginx over TLS.
+
+### One-shot secure deployment (`https://dcgsl.duckdns.org`)
+
+```bash
+sudo ./deploy/install-web.sh --email you@example.com
+```
+
+That single command, safe to re-run, does everything:
+
+- installs **nginx + certbot** (apt or dnf), the app venv, and dependencies;
+- prompts you for a web **admin password** (stored only as an scrypt hash);
+- writes an nginx vhost for `dcgsl.duckdns.org`, obtains a **Let's Encrypt
+  certificate** (with an auto-renew reload hook), and redirects all HTTP to HTTPS;
+- hardens the vhost — TLS 1.2/1.3 only, HSTS, security headers, and an nginx
+  rate limit on `/login`;
+- installs a hardened **systemd service** (`gomboclat-web`) so the hub (and the
+  bot inside it) starts on boot and restarts on failure;
+- opens ports 80/443 in ufw/firewalld when one is active;
+- optionally keeps your DuckDNS record pointed at this machine
+  (`--duckdns-token YOUR_TOKEN` installs a 5-minute updater timer).
+
+Prerequisites: the DuckDNS domain must point at your public IP, and ports
+80 + 443 must be forwarded to the machine. Different domain or port? Use
+`--domain` / `--port`. Change the password later with `--reset-password`.
+
+```bash
+systemctl status gomboclat-web      # service state
+journalctl -u gomboclat-web -f      # live logs
+```
+
+### Web security model
+
+- The app itself listens on `127.0.0.1:8134` only; nginx is the sole way in,
+  and it speaks HTTPS exclusively.
+- One admin password, scrypt-hashed in `.env` (`python run.py --set-web-password`).
+  The hub **refuses to start** without one.
+- Sessions are HMAC-signed expiring cookies (`HttpOnly`, `SameSite=Strict`,
+  `Secure`); every state-changing request additionally requires a per-session
+  CSRF token.
+- Failed logins are throttled in the app (5 per 5 minutes per address) *and*
+  rate-limited in nginx.
+- Strict headers everywhere (self-only CSP, `X-Frame-Options: DENY`, HSTS,
+  `nosniff`), and secrets are never echoed back to the browser.
+
+---
+
 ## What it can do (v1)
 
 **Read-only (context gathering):** `get_member_info`, `list_roles`,
@@ -211,6 +263,9 @@ Failures are refused with a short, friendly explanation and logged.
 ```
 bot/
   main.py          # Discord client, addressing, confirmation flow, slash commands
+  web.py           # web control hub (aiohttp) — browser twin of the TUI
+  websecurity.py   # scrypt passwords, signed sessions, CSRF, login throttle
+  webui/           # static frontend for the web hub (HTML/CSS/JS)
   ai.py            # Anthropic client + agentic loop + tool schemas
   tools.py         # executor functions (thin wrappers over discord.py)
   permissions.py   # the validation layer — pure, unit-tested, no Discord I/O
@@ -226,8 +281,11 @@ tests/
   test_colours.py       # colour parsing (names, hex, rgb, random)
   test_resolve.py       # the pure member/role/channel name matcher
   test_store.py         # per-guild settings + per-guild audit queries
-run.py             # entrypoint (TUI by default; --headless available)
+  test_websecurity.py   # password hashing, session/CSRF tokens, login throttle
+run.py             # entrypoint (TUI by default; --headless / --web available)
 setup.sh           # one-shot Linux setup + launcher
+deploy/
+  install-web.sh   # nginx + Let's Encrypt + systemd deployment for the web UI
 CHANGELOG.md
 .env.example
 requirements.txt
@@ -254,6 +312,12 @@ and are set at runtime via slash commands.
 | `AUTO_UPDATE` | `false` | Periodically pull + reinstall from the git upstream |
 | `AUTO_UPDATE_INTERVAL` | `30` | Minutes between update checks |
 | `AUTO_RESTART` | `false` | Restart the bot automatically after an auto-update |
+| `WEB_HOST` | `127.0.0.1` | Web hub bind address (keep on localhost behind nginx) |
+| `WEB_PORT` | `8134` | Web hub port |
+| `WEB_DOMAIN` | `dcgsl.duckdns.org` | Public domain used by `deploy/install-web.sh` |
+| `WEB_PASSWORD_HASH` | — | Admin password (scrypt hash; `python run.py --set-web-password`) |
+| `WEB_SESSION_SECRET` | auto | Session-cookie signing secret (auto-generated) |
+| `WEB_SESSION_HOURS` | `12` | Browser session lifetime |
 
 All of these are editable live from the TUI's **Configure** tab.
 

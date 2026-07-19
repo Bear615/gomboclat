@@ -1,5 +1,48 @@
 # Changelog
 
+## Unreleased — web control hub at dcgsl.duckdns.org
+
+The control hub previously existed only as a terminal TUI on the box itself.
+This adds a browser twin of that hub plus a one-shot script that publishes it
+securely at https://dcgsl.duckdns.org.
+
+### Added
+- **`bot/web.py`** — an aiohttp web control hub (`./setup.sh --web` /
+  `run.py --web`) mirroring the TUI: Dashboard (start/stop/restart, live status,
+  live audit feed), Configure (every `.env` setting, secrets masked and never
+  echoed back), and Maintenance (install deps, check/update from GitHub with
+  streamed output, Discord update announcements, auto-update loop). Binds to
+  `127.0.0.1` only.
+- **`bot/websecurity.py`** — stdlib-only security primitives: scrypt password
+  hashing (salted, constant-time verify), HMAC-signed expiring session tokens,
+  per-session CSRF tokens, and a sliding-window login throttle. Fully unit-tested.
+- **`bot/webui/`** — the static frontend (no frameworks, no CDN, CSP-friendly):
+  dark-themed dashboard with incremental event polling.
+- **`deploy/install-web.sh`** — idempotent root deployment script: installs
+  nginx + certbot (apt/dnf), obtains + auto-renews a Let's Encrypt certificate
+  for the domain, writes a hardened vhost (TLS 1.2/1.3 only, HSTS, security
+  headers, `/login` rate limit, HTTP→HTTPS redirect), installs a hardened
+  systemd service (`gomboclat-web`), opens 80/443 in ufw/firewalld, and can
+  install a DuckDNS IP-updater timer (`--duckdns-token`).
+- **`python run.py --set-web-password`** — interactive admin-password setup;
+  only the scrypt hash lands in `.env`. The web hub refuses to start until a
+  password is set, and auto-generates its session secret on first launch.
+- **`WEB_HOST` / `WEB_PORT` / `WEB_DOMAIN` / `WEB_PASSWORD_HASH` /
+  `WEB_SESSION_SECRET` / `WEB_SESSION_HOURS`** env settings.
+- 16 new unit tests (81 → 97) covering password round-trips and malformed
+  hashes, token expiry/tampering/wrong-secret, CSRF pairing, throttle
+  windows/independence, and the incremental event buffer.
+
+### Security notes
+- Sessions: `HttpOnly` + `SameSite=Strict` + `Secure` cookies; every
+  state-changing request also needs the `X-CSRF-Token` header.
+- Failed logins throttled app-side (5 per 5 min per client) *and* rate-limited
+  by nginx; `X-Real-IP` is only trusted from localhost (i.e. our nginx).
+- Self-only Content-Security-Policy, `X-Frame-Options: DENY`, `nosniff`,
+  `no-referrer`, `Cache-Control: no-store` on every app response.
+- **No change to the Discord permission model** — the web hub is an operator
+  console; moderation writes are still validated in `bot/permissions.py`.
+
 ## Unreleased — conversation context
 
 Until now the bot saw only the text of the message that mentioned it — so "ban

@@ -3,9 +3,13 @@
 #
 #   ./setup.sh            # install everything, then launch the TUI
 #   ./setup.sh --headless # install everything, then run without the TUI
+#   ./setup.sh --web       # install everything, then run the web control hub
 #   ./setup.sh --install   # install everything and stop (don't launch)
 #   ./setup.sh --reinstall # force-reinstall all dependencies
 #   ./setup.sh --test      # install everything, then run the unit tests
+#
+# To expose the web hub securely at https://dcgsl.duckdns.org (nginx + Let's
+# Encrypt + systemd, fully automatic): sudo ./deploy/install-web.sh
 #
 # It creates a local virtualenv (.venv), installs dependencies, ensures a .env
 # exists, and runs the bot. Re-running is safe and fast.
@@ -66,6 +70,10 @@ case "$MODE" in
   --headless|headless)
     info "Launching bot (headless)"
     exec python run.py --headless
+    ;;
+  --web|web)
+    info "Launching web control hub (localhost — put nginx in front for the internet)"
+    exec python run.py --web
     ;;
   *)
     if grep -q "your-discord-bot-token-here" .env 2>/dev/null; then

@@ -104,6 +104,14 @@ class Config:
     auto_update: bool = False
     auto_update_interval: int = 30  # minutes between update checks
     auto_restart: bool = False      # restart the bot automatically after an update
+    # Web control hub (bot/web.py). Binds to localhost by default and is only
+    # exposed to the internet through nginx over TLS (deploy/install-web.sh).
+    web_host: str = "127.0.0.1"
+    web_port: int = 8134
+    web_domain: str = "dcgsl.duckdns.org"
+    web_password_hash: str = ""    # scrypt hash; set via `python run.py --set-web-password`
+    web_session_secret: str = ""   # auto-generated on first web launch if empty
+    web_session_hours: int = 12
 
     def missing_secrets(self) -> list[str]:
         out = []
@@ -136,6 +144,12 @@ class Config:
             auto_update=_env_bool("AUTO_UPDATE", False),
             auto_update_interval=_env_int("AUTO_UPDATE_INTERVAL", 30),
             auto_restart=_env_bool("AUTO_RESTART", False),
+            web_host=_env("WEB_HOST", "127.0.0.1"),  # type: ignore[arg-type]
+            web_port=_env_int("WEB_PORT", 8134),
+            web_domain=_env("WEB_DOMAIN", "dcgsl.duckdns.org"),  # type: ignore[arg-type]
+            web_password_hash=_env("WEB_PASSWORD_HASH") or "",
+            web_session_secret=_env("WEB_SESSION_SECRET") or "",
+            web_session_hours=_env_int("WEB_SESSION_HOURS", 12),
         )
         if require_secrets and config.missing_secrets():
             raise SystemExit(
