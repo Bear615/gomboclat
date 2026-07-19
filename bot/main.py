@@ -167,10 +167,15 @@ def create_bot(
         acked = await _react(message, "👀")  # visible "I'm on it" while thinking
         try:
             async with message.channel.typing():
-                reply_text, outcomes = await agent.run(ctx, text, msg_context)
+                # Internal-by-default answer scheme: ``internal_text`` is the model's
+                # private reasoning and is deliberately NOT posted. Everything a user
+                # is meant to read the model posts itself via the send_message tool.
+                # (Tool outcomes are already streamed to operators via the audit feed.)
+                internal_text, _outcomes = await agent.run(ctx, text, msg_context)
         except Exception as e:
             await _unreact(message, "👀", acked)
             await _react(message, "⚠️")
+            # A crashed loop can't have posted anything itself, so surface the failure.
             await _reply(message, f"Something went wrong while handling that: `{e}`")
             hooks.status(f"Error handling message: {e}")
             return
@@ -178,10 +183,9 @@ def create_bot(
         await _unreact(message, "👀", acked)
         await _react(message, "✅")
 
-        body = reply_text
-        if not body:
-            body = "\n".join(outcomes) if outcomes else "I didn't take any action."
-        await _reply(message, body)
+        # Keep the internal reasoning visible to operators (TUI/console) only.
+        if internal_text:
+            hooks.status(f"[internal] {internal_text[:300]}")
 
     # -- slash command: set the audit log channel -------------------------- #
     @bot.tree.command(name="setlogchannel", description="Set the channel where moderation actions are logged.")

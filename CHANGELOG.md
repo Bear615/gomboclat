@@ -75,6 +75,35 @@ request is about; every write it proposes is still re-validated against the real
 requester's live Discord permissions in `permissions.py`. Set `CONTEXT_ENABLED=false`
 to send only the raw message.
 
+## Unreleased — internal-by-default answers
+
+A new **answer scheme**: the model no longer speaks by having its text auto-posted.
+Its free-text output is now *internal* — a private scratchpad that is never shown —
+and it communicates with users only by deliberately calling a `send_message` tool.
+
+### Added
+- **`send_message` tool** — the bot's sole channel of communication with humans. It
+  posts to the current channel by default, or to any other channel the model names
+  (e.g. *"announce it in #general"*). Like every other tool it is re-validated in
+  code before it touches Discord: the requester must be able to **view and send** in
+  the target channel (guild owner exempt), so the bot can never be used to broadcast
+  into a channel the requester couldn't post in themselves. Rate-limited and audited
+  like any write. The guard lives in `permissions.validate_send_message`, not the prompt.
+- Tests for `validate_send_message` (allow / no-view / view-but-no-send / owner
+  bypass / injection-claims-access-doesn't-help).
+
+### Changed
+- **The message layer no longer auto-posts the model's reply.** `Agent.run` still
+  returns the model's text, but it is treated as internal (kept for logs/TUI only);
+  users see only what the model sends via `send_message`, plus the usual 👀/✅/⚠️
+  reactions. If the model chooses to say nothing, only the ✅ reaction appears.
+- System prompt updated to explain the internal-by-default scheme and that
+  `send_message` is the only way to reach a human.
+
+### Note
+No change to the security model. Every write — now including `send_message` — is
+still re-checked in `bot/permissions.py` against the real requester's permissions.
+
 ## Unreleased — update announcements
 
 The auto-update feature previously pulled code silently, with output only in the
