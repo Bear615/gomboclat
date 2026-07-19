@@ -567,6 +567,76 @@ async def set_channel_overwrite(
 
 
 # --------------------------------------------------------------------------- #
+# Messaging -- the bot's ONLY way to say anything to users
+# --------------------------------------------------------------------------- #
+
+# Discord hard-caps a single message at 2000 characters; leave headroom.
+_MESSAGE_CHUNK = 1900
+
+
+def _chunk_message(text: str) -> list[str]:
+    return [text[i : i + _MESSAGE_CHUNK] for i in range(0, len(text), _MESSAGE_CHUNK)]
+
+
+async def send_message(ctx: ToolContext, content: str, channel: str | None = None) -> str:
+    """Post a free-text message into a channel (defaults to the current one).
+
+    Under the internal-by-default answer scheme this is the model's *only* channel
+    of communication with users: its own text output is never shown, so anything
+    it wants a human to read it must send here. The model may target any channel,
+    but the requester must be able to view + send there (owner exempt) -- the guard
+    lives in ``permissions.validate_send_message``, not in the prompt.
+    """
+    args = {"channel": channel, "content": content}
+
+    cooldown = await _rate_limited(ctx, "send_message", args)
+    if cooldown:
+        return cooldown
+
+    if content is None or not str(content).strip():
+        return await _refuse(
+            ctx, "send_message", args, perm.refuse("empty", "Nothing to send — the message was empty.")
+        )
+
+    try:
+        target_channel = resolve_channel(ctx.guild, channel, ctx.channel)
+    except ValueError as e:
+        return await _refuse(ctx, "send_message", args, perm.refuse("resolve", str(e)))
+
+    if not isinstance(target_channel, discord.abc.Messageable):
+        return await _refuse(
+            ctx, "send_message", args,
+            perm.refuse("channel_type", f"**#{getattr(target_channel, 'name', target_channel)}** isn't a channel I can post text in."),
+        )
+
+    # The requester's *effective* permissions in this specific channel (respects
+    # per-channel overwrites), reduced to primitives for the pure validator.
+    req_perms = target_channel.permissions_for(ctx.requester)
+    decision = perm.validate_send_message(
+        ctx.request_context(),
+        requester_can_view=req_perms.view_channel,
+        requester_can_send=req_perms.send_messages,
+    )
+    if not decision:
+        return await _refuse(ctx, "send_message", args, decision)
+
+    text = str(content)
+    try:
+        for chunk in _chunk_message(text):
+            await target_channel.send(chunk)
+    except discord.Forbidden:
+        return await _refuse(
+            ctx, "send_message", args,
+            perm.refuse("discord_forbidden", "Discord refused — I don't have permission to post in that channel."),
+        )
+    except discord.HTTPException as e:
+        return await _refuse(ctx, "send_message", args, perm.refuse("discord_error", f"Discord error: {e}"))
+
+    outcome = f"Sent a message to **#{getattr(target_channel, 'name', target_channel)}** ({len(text)} chars)."
+    return await _executed(ctx, "send_message", args, decision, outcome)
+
+
+# --------------------------------------------------------------------------- #
 # Punitive tools -- permission-validated AND gated behind typed CONFIRM
 # --------------------------------------------------------------------------- #
 

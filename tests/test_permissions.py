@@ -273,6 +273,48 @@ def test_overwrite_scoped_role_view_channel_ok():
 
 
 # --------------------------------------------------------------------------- #
+# send_message: the bot may only post where the requester could post
+# --------------------------------------------------------------------------- #
+
+
+def test_send_message_allowed_where_requester_can_post():
+    ctx = mk_ctx(requester_perms=discord.Permissions.none())
+    d = perm.validate_send_message(ctx, requester_can_view=True, requester_can_send=True)
+    assert d.ok
+    assert d.check == "send_message"
+
+
+def test_send_message_refused_when_requester_cannot_view():
+    # A channel the requester can't even see must not become a broadcast target.
+    ctx = mk_ctx(requester_perms=discord.Permissions.none())
+    d = perm.validate_send_message(ctx, requester_can_view=False, requester_can_send=False)
+    assert not d.ok
+    assert d.check == "send_message"
+
+
+def test_send_message_refused_when_requester_can_view_but_not_send():
+    # e.g. a locked #announcements the member can read but not post in.
+    ctx = mk_ctx(requester_perms=discord.Permissions.none())
+    d = perm.validate_send_message(ctx, requester_can_view=True, requester_can_send=False)
+    assert not d.ok
+    assert d.check == "send_message"
+
+
+def test_send_message_owner_bypass():
+    # The guild owner can direct a post anywhere, like every other check here.
+    ctx = mk_ctx(is_owner=True, requester_perms=discord.Permissions.none())
+    assert perm.validate_send_message(ctx, requester_can_view=False, requester_can_send=False).ok
+
+
+def test_send_message_injection_claiming_access_does_not_help():
+    # Identity/permissions come from the trusted requester, not message text.
+    ctx = mk_ctx(requester_perms=discord.Permissions.none())
+    assert ctx.is_owner is False
+    d = perm.validate_send_message(ctx, requester_can_view=False, requester_can_send=True)
+    assert not d.ok
+
+
+# --------------------------------------------------------------------------- #
 # Punitive
 # --------------------------------------------------------------------------- #
 

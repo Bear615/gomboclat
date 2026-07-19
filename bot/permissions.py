@@ -283,6 +283,40 @@ def validate_create_channel(ctx: RequestContext) -> Decision:
     return check_requester_capability(ctx, "manage_channels")
 
 
+def validate_send_message(
+    ctx: RequestContext,
+    requester_can_view: bool,
+    requester_can_send: bool,
+) -> Decision:
+    """Validate the bot sending a free-text message into a channel on the
+    requester's behalf.
+
+    The tool lets the model choose *any* channel, but -- true to the rest of this
+    module -- the bot may only speak where the **requester themselves** could
+    speak. Otherwise a member (or a prompt-injected model acting in their name)
+    could use the bot to broadcast into channels they can't even see or post in.
+    So the requester must be able to both *view* and *send* in the target channel.
+    The guild owner is exempt, exactly as with every other check here.
+
+    ``requester_can_view`` / ``requester_can_send`` are the requester's effective
+    permissions *in the target channel* (computed by the caller from the live
+    channel overwrites), passed as primitives to keep this module Discord-free.
+    """
+    if ctx.is_owner:
+        return allow("send_message", "owner bypass")
+    if not requester_can_view:
+        return refuse(
+            "send_message",
+            "I can only post where you can — and you don't have access to that channel.",
+        )
+    if not requester_can_send:
+        return refuse(
+            "send_message",
+            "I can only post where you can — and you can't send messages in that channel.",
+        )
+    return allow("send_message")
+
+
 def validate_set_channel_overwrite(
     ctx: RequestContext,
     allow_perms: discord.Permissions,

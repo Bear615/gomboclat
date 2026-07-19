@@ -73,6 +73,15 @@ meant), while message text stays untrusted data — every action is still re-che
 against **your** real permissions in code. Tune or disable it with the
 `CONTEXT_*` settings in `.env`.
 
+**How it answers.** The model's own text is **internal by default** — it is never
+posted. Everything you actually see the bot *say* is sent deliberately through a
+`send_message` tool: the model decides what (if anything) is worth exposing and
+posts exactly that. It replies in the current channel by default, but it can also
+post to another channel when asked (*"announce the new role in #general"*) — the
+code still refuses any channel the requester couldn't post in themselves, so the
+bot can never be used to broadcast where you can't. If the model chooses to stay
+silent, you'll just see the ✅ reaction.
+
 Colours can be a name (`purple`, `coral`, `turquoise`, …), a hex code (`#A020F0`,
 `0xA020F0`, or the shorthand `#f0f`), a CSS-style `rgb(160, 32, 240)`, or `random`.
 Member/role/channel names resolve by an exact match first, then fall back to a
@@ -138,6 +147,11 @@ no hub (config comes straight from `.env`).
 
 **Read-only (context gathering):** `get_member_info`, `list_roles`,
 `list_channels`, `get_my_permissions`.
+
+**Communication:** `send_message` — the bot's only way to say anything to a human
+(its own text is internal). Posts to the current channel by default, or any other
+channel the requester could post in. Validated (requester must be able to view +
+send there; owner exempt), rate-limited, and audited like any other action.
 
 **Writes (each validated before execution):** `create_role`, `assign_role` /
 `remove_role`, `change_nickname`, `create_channel`, `set_channel_overwrite`.
