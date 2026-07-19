@@ -18,6 +18,7 @@ from discord.ext import commands
 from .ai import Agent
 from .audit import AuditLogger
 from .config import Config, GuildSettingsStore
+from .context import gather_context
 from .ratelimit import RateLimiter
 from .tools import ToolContext
 
@@ -148,10 +149,25 @@ def create_bot(
             log_channel=log_channel,
         )
 
+        # Gather the surrounding conversation (replied-to message + recent history).
+        # Best-effort: context is a nicety, never a reason a request fails.
+        msg_context = None
+        if config.context_enabled:
+            try:
+                msg_context = await gather_context(
+                    message,
+                    bot.user,
+                    history_limit=config.context_history_limit,
+                    include_replies=config.context_include_replies,
+                    max_chars=config.context_max_message_chars,
+                )
+            except Exception as e:  # noqa: BLE001 -- degrade to no context, never crash
+                hooks.status(f"Context gathering failed (continuing without): {e}")
+
         acked = await _react(message, "👀")  # visible "I'm on it" while thinking
         try:
             async with message.channel.typing():
-                reply_text, outcomes = await agent.run(ctx, text)
+                reply_text, outcomes = await agent.run(ctx, text, msg_context)
         except Exception as e:
             await _unreact(message, "👀", acked)
             await _react(message, "⚠️")
@@ -196,6 +212,13 @@ def create_bot(
             f"• Rate limit: {limit} write actions / {config.rate_limit_window}s per user{limit_note}\n"
             f"• Bulk-confirm threshold: {config.bulk_confirm_threshold} writes/turn\n"
             f"• Punitive tools: {'enabled (typed CONFIRM required)' if config.enable_punitive else 'disabled'}\n"
+            + (
+                f"• Context: replies {'✅' if config.context_include_replies else '❌'}, "
+                f"last {config.context_history_limit} message(s)\n"
+                if config.context_enabled
+                else "• Context: ⏸️ disabled\n"
+            )
+            +
             f"• My top role position: {me.top_role.position}\n"
             f"Mention me and describe what you'd like, or run `/help`.",
             ephemeral=True,

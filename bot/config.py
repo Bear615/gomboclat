@@ -94,6 +94,11 @@ class Config:
     bulk_confirm_threshold: int = 3
     # Enable punitive tools (ban/kick/timeout) -- gated behind typed CONFIRM.
     enable_punitive: bool = True
+    # Conversation context fed to the model on each mention (see bot/context.py).
+    context_enabled: bool = True          # master switch for the whole system
+    context_include_replies: bool = True  # pull in the replied-to message
+    context_history_limit: int = 5        # recent channel messages to include (0 = off)
+    context_max_message_chars: int = 400  # per-message body cap, keeps it focused
     db_path: str = "moderator.db"
     # Auto-update from GitHub.
     auto_update: bool = False
@@ -123,6 +128,10 @@ class Config:
             rate_limit_window=_env_int("RATE_LIMIT_WINDOW", 60),
             bulk_confirm_threshold=_env_int("BULK_CONFIRM_THRESHOLD", 3),
             enable_punitive=_env_bool("ENABLE_PUNITIVE", True),
+            context_enabled=_env_bool("CONTEXT_ENABLED", True),
+            context_include_replies=_env_bool("CONTEXT_INCLUDE_REPLIES", True),
+            context_history_limit=_env_int("CONTEXT_HISTORY_LIMIT", 5),
+            context_max_message_chars=_env_int("CONTEXT_MAX_MESSAGE_CHARS", 400),
             db_path=_env("DB_PATH", "moderator.db"),  # type: ignore[arg-type]
             auto_update=_env_bool("AUTO_UPDATE", False),
             auto_update_interval=_env_int("AUTO_UPDATE_INTERVAL", 30),
