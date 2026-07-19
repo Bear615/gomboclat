@@ -68,8 +68,10 @@ case "$MODE" in
     exec python run.py --headless
     ;;
   *)
+    # The TUI hub opens even before secrets are set — that's what the Configure
+    # tab is for — so launch it regardless and just nudge if nothing's set yet.
     if grep -q "your-discord-bot-token-here" .env 2>/dev/null; then
-      die "Fill in DISCORD_TOKEN and your OpenAI-compatible API key/endpoint/model in .env (or use the TUI's Configure tab) before launching."
+      warn "No secrets set yet — opening the hub. Fill in DISCORD_TOKEN and your API endpoint/key/model on the Configure tab, then Save to .env."
     fi
     info "Launching TUI dashboard (press q to quit)"
     exec python run.py
