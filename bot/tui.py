@@ -424,20 +424,48 @@ class ModeratorHub(App):
     async def _auto_update_loop(self) -> None:
         # Wait a bit before the first check so startup logs stay readable.
         await asyncio.sleep(60)
+        # Track the last state we announced so the loop is observable without
+        # spamming the panel with an identical line on every cycle.
+        announced_off = False
         while True:
             interval = max(5, self.config.auto_update_interval)
-            if self.config.auto_update:
-                status = await maintenance.check_for_updates(self._maint_log)
-                if status.update_available:
+            if not self.config.auto_update:
+                # Make "nothing is happening" legible: without this a disabled
+                # loop and a silently-broken one look identical from the panel.
+                if not announced_off:
                     self._maint_log(
-                        f"[b]Auto-update:[/] {status.behind} commit(s) behind — pulling…"
+                        "[dim]Auto-update is off — turn it on in the Configure tab.[/]"
                     )
-                    report = await maintenance.pull_and_install(self._maint_log)
-                    if report.pulled:
-                        await self._report_update(report)
-                        if self.config.auto_restart and self.controller.active:
-                            self._maint_log("[b]Auto-restarting bot…[/]")
-                            await self.controller.restart()
+                    announced_off = True
+                await asyncio.sleep(interval * 60)
+                continue
+            announced_off = False
+
+            # Quiet fetch: don't dump raw git output into the panel every cycle;
+            # summarise the outcome instead so each check leaves one clear line.
+            status = await maintenance.check_for_updates()
+            if status.error:
+                # Previously swallowed — a missing upstream or failed fetch made
+                # auto-update a silent no-op. Surface it so it's diagnosable.
+                self._maint_log(
+                    f"[yellow]Auto-update: can't check ({status.error}).[/]"
+                )
+            elif status.update_available:
+                self._maint_log(
+                    f"[b]Auto-update:[/] {status.behind} commit(s) behind — pulling…"
+                )
+                report = await maintenance.pull_and_install(self._maint_log)
+                if report.pulled:
+                    await self._report_update(report)
+                    if self.config.auto_restart and self.controller.active:
+                        self._maint_log("[b]Auto-restarting bot…[/]")
+                        await self.controller.restart()
+            else:
+                self._maint_log(
+                    f"[dim]Auto-update: up to date "
+                    f"({status.branch} @ {status.local_rev}).[/]"
+                )
+            await self._refresh_git_status(status)
             await asyncio.sleep(interval * 60)
 
     async def _report_update(self, report: "maintenance.UpdateReport") -> None:
