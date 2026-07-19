@@ -612,10 +612,18 @@ async def send_message(ctx: ToolContext, content: str, channel: str | None = Non
     # The requester's *effective* permissions in this specific channel (respects
     # per-channel overwrites), reduced to primitives for the pure validator.
     req_perms = target_channel.permissions_for(ctx.requester)
+    # Discord gates talking *in a thread* on send_messages_in_threads; on a thread
+    # `send_messages` merely mirrors the parent channel. Pick the flag that actually
+    # governs the target so thread-only setups aren't wrongly refused (or allowed).
+    requester_can_send = (
+        req_perms.send_messages_in_threads
+        if isinstance(target_channel, discord.Thread)
+        else req_perms.send_messages
+    )
     decision = perm.validate_send_message(
         ctx.request_context(),
         requester_can_view=req_perms.view_channel,
-        requester_can_send=req_perms.send_messages,
+        requester_can_send=requester_can_send,
     )
     if not decision:
         return await _refuse(ctx, "send_message", args, decision)
