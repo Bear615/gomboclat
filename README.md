@@ -109,6 +109,13 @@ Three tabs:
 - **Auto-update** — when enabled (Configure tab), the hub periodically checks the
   upstream and, if there are new commits, pulls and reinstalls automatically; with
   **auto-restart** on, it restarts the bot to apply the update. Interval configurable.
+  Auto-update is **off by default** — flip *"Auto-update from GitHub"* in the
+  Configure tab and **Save** to turn it on.
+- **Update announcements** — after any update (manual or automatic) that pulls new
+  commits, the hub lists the new commit subjects in the Maintenance log and posts a
+  summary embed — the commit list plus the top section of `CHANGELOG.md` — to every
+  guild's configured log channel (set with `/setlogchannel`). Guilds without a log
+  channel are simply skipped.
 
 Keys: `s` start · `x` stop · `r` restart · `c` clear feed · `q` quit.
 

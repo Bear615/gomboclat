@@ -9,7 +9,7 @@ from __future__ import annotations
 
 import asyncio
 import sys
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Callable
 
@@ -113,6 +113,55 @@ async def git_pull(on_line: LineSink = None) -> CommandResult:
     return await run(["git", "pull", "--ff-only"], on_line)
 
 
+async def git_head() -> str:
+    """Full SHA of the current HEAD (empty string on failure)."""
+    return (await run(["git", "rev-parse", "HEAD"])).output.strip()
+
+
+async def git_log_between(old: str, new: str) -> list[str]:
+    """Commit subject lines in ``old..new`` (newest first), merges excluded.
+
+    Returns an empty list if either rev is missing or they're identical.
+    """
+    if not old or not new or old == new:
+        return []
+    res = await run(["git", "log", "--no-merges", "--pretty=format:%s", f"{old}..{new}"])
+    if not res.ok:
+        return []
+    return [ln.strip() for ln in res.output.splitlines() if ln.strip()]
+
+
+def top_changelog_section(text: str) -> str:
+    """Extract the first version section from a Keep-a-Changelog-style file.
+
+    Returns the first ``## `` heading and its body, stopping before the next
+    ``## `` heading. Pure and I/O-free so it's directly unit-testable. Any
+    leading preamble before the first ``## `` heading is skipped.
+    """
+    lines = text.splitlines()
+    out: list[str] = []
+    started = False
+    for ln in lines:
+        if ln.startswith("## "):
+            if started:
+                break
+            started = True
+            out.append(ln)
+            continue
+        if started:
+            out.append(ln)
+    return "\n".join(out).strip()
+
+
+def read_changelog_section(root: Path | None = None) -> str:
+    """Read CHANGELOG.md (if present) and return its top section. '' if absent."""
+    path = (root or REPO_ROOT) / "CHANGELOG.md"
+    try:
+        return top_changelog_section(path.read_text(encoding="utf-8"))
+    except OSError:
+        return ""
+
+
 # --------------------------------------------------------------------------- #
 # Dependencies
 # --------------------------------------------------------------------------- #
@@ -135,10 +184,28 @@ async def reinstall_dependencies(on_line: LineSink = None) -> CommandResult:
     return await run(args, on_line)
 
 
-async def pull_and_install(on_line: LineSink = None) -> tuple[bool, bool]:
-    """Pull, then install deps. Returns (pulled_ok, deps_ok)."""
+@dataclass
+class UpdateReport:
+    """Result of a pull-and-install cycle, including what changed."""
+
+    pulled: bool
+    deps_ok: bool
+    old_rev: str = ""
+    new_rev: str = ""
+    commits: list[str] = field(default_factory=list)  # subjects, newest first
+
+    @property
+    def changed(self) -> bool:
+        return self.pulled and bool(self.commits)
+
+
+async def pull_and_install(on_line: LineSink = None) -> UpdateReport:
+    """Pull (ff-only), then install deps, reporting the commits that landed."""
+    old = await git_head()
     pull = await git_pull(on_line)
     if not pull.ok:
-        return False, False
+        return UpdateReport(pulled=False, deps_ok=False, old_rev=old, new_rev=old)
+    new = await git_head()
     deps = await install_dependencies(on_line)
-    return True, deps.ok
+    commits = await git_log_between(old, new)
+    return UpdateReport(pulled=True, deps_ok=deps.ok, old_rev=old, new_rev=new, commits=commits)

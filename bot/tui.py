@@ -17,6 +17,7 @@ from __future__ import annotations
 import asyncio
 from datetime import datetime
 
+import discord
 from textual.app import App, ComposeResult
 from textual.containers import Horizontal, Vertical, VerticalScroll
 from textual.widgets import (
@@ -411,12 +412,11 @@ class ModeratorHub(App):
 
     async def _update_now(self) -> None:
         self._maint_log("[b]Pulling latest and reinstalling…[/]")
-        pulled, deps = await maintenance.pull_and_install(self._maint_log)
-        if not pulled:
+        report = await maintenance.pull_and_install(self._maint_log)
+        if not report.pulled:
             self._maint_log("[red]✖ Pull failed (not fast-forward, or no upstream).[/]")
             return
-        self._maint_log("[green]✔ Updated.[/]" + ("" if deps else " [yellow](dependency install had issues)[/]"))
-        await self._refresh_git_status()
+        await self._report_update(report)
         if self.controller.active:
             self._maint_log("[b]Restarting bot to apply update…[/]")
             await self.controller.restart()
@@ -432,11 +432,76 @@ class ModeratorHub(App):
                     self._maint_log(
                         f"[b]Auto-update:[/] {status.behind} commit(s) behind — pulling…"
                     )
-                    pulled, _ = await maintenance.pull_and_install(self._maint_log)
-                    if pulled and self.config.auto_restart and self.controller.active:
-                        self._maint_log("[b]Auto-restarting bot…[/]")
-                        await self.controller.restart()
+                    report = await maintenance.pull_and_install(self._maint_log)
+                    if report.pulled:
+                        await self._report_update(report)
+                        if self.config.auto_restart and self.controller.active:
+                            self._maint_log("[b]Auto-restarting bot…[/]")
+                            await self.controller.restart()
             await asyncio.sleep(interval * 60)
+
+    async def _report_update(self, report: "maintenance.UpdateReport") -> None:
+        """Surface a completed update in the Maintenance panel, then announce it
+        to Discord. Runs on the TUI loop (same loop as the bot), so sending
+        Discord messages here is safe."""
+        if report.commits:
+            self._maint_log(f"[green]✔ Updated — {len(report.commits)} new commit(s):[/]")
+            for subject in report.commits[:15]:
+                self._maint_log(f"  • {subject}")
+            if len(report.commits) > 15:
+                self._maint_log(f"  [dim]…and {len(report.commits) - 15} more[/]")
+        else:
+            self._maint_log("[green]✔ Updated (no new commits).[/]")
+        if not report.deps_ok:
+            self._maint_log("[yellow](dependency install had issues)[/]")
+        await self._refresh_git_status()
+        await self._announce_update(report)
+
+    async def _announce_update(self, report: "maintenance.UpdateReport") -> None:
+        """Post an update summary to every guild's configured log channel.
+
+        Best-effort and silent per-guild: a missing channel or a send failure
+        never breaks the update. Skips entirely if nothing changed or the bot
+        isn't currently running."""
+        if not report.changed:
+            return
+        bot = self.controller.bot
+        if bot is None:
+            self._maint_log("[dim]Bot not running — skipped Discord announcement.[/]")
+            return
+
+        embed = discord.Embed(
+            title="🔄 Bot updated",
+            description=(
+                f"Pulled **{len(report.commits)}** new commit(s) "
+                f"(`{report.old_rev[:7]}` → `{report.new_rev[:7]}`)."
+            ),
+            colour=discord.Colour.blurple(),
+        )
+        commit_lines = "\n".join(f"• {c}" for c in report.commits[:10])
+        if len(report.commits) > 10:
+            commit_lines += f"\n…and {len(report.commits) - 10} more"
+        embed.add_field(name="Changes", value=commit_lines[:1024] or "—", inline=False)
+
+        changelog = maintenance.read_changelog_section()
+        if changelog:
+            snippet = changelog if len(changelog) <= 1000 else changelog[:1000].rstrip() + "\n…"
+            embed.add_field(name="Changelog", value=snippet, inline=False)
+
+        sent = 0
+        for guild in list(bot.guilds):
+            s = self.settings_store.get(guild.id)
+            if not s.log_channel_id:
+                continue
+            channel = guild.get_channel(s.log_channel_id)
+            if channel is None:
+                continue
+            try:
+                await channel.send(embed=embed)
+                sent += 1
+            except discord.HTTPException:
+                pass
+        self._maint_log(f"[dim]Announced update to {sent} log channel(s).[/]")
 
     async def _refresh_git_status(self, status: "maintenance.UpdateStatus | None" = None) -> None:
         try:

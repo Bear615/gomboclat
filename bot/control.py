@@ -47,6 +47,15 @@ class BotController:
     def active(self) -> bool:
         return self.state in (STARTING, RUNNING, STOPPING)
 
+    @property
+    def bot(self) -> "commands.Bot | None":
+        """The live bot, but only while it's actually running (else None).
+
+        Callers use this to send Discord messages (e.g. update announcements);
+        gating on RUNNING avoids handing out a half-built or closing client.
+        """
+        return self._bot if self.state == RUNNING else None
+
     def mark_ready(self) -> None:
         """Called when the bot fires on_ready -- transition starting -> running."""
         if self.state in (STARTING, RUNNING):
