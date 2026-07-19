@@ -63,6 +63,16 @@ The bot only runs the LLM when **@mentioned** — never on every message. While 
 works on your request it reacts 👀 on your message, then ✅ when done (or ⚠️ if
 something went wrong). DM it and it points you back to a server.
 
+**Reply to point at something.** When you mention the bot as a *reply* to another
+message, that message is pulled into context — so `@AI Moderator ban them` or
+`@AI Moderator who is this?` just work, no need to name the person. The bot also
+sees a short window of recent channel messages, letting *"undo what you just did"*
+and similar back-references resolve. This context system is focused on purpose:
+author names and IDs come from Discord (trusted, used only to figure out *who* is
+meant), while message text stays untrusted data — every action is still re-checked
+against **your** real permissions in code. Tune or disable it with the
+`CONTEXT_*` settings in `.env`.
+
 Colours can be a name (`purple`, `coral`, `turquoise`, …), a hex code (`#A020F0`,
 `0xA020F0`, or the shorthand `#f0f`), a CSS-style `rgb(160, 32, 240)`, or `random`.
 Member/role/channel names resolve by an exact match first, then fall back to a
@@ -182,6 +192,9 @@ Failures are refused with a short, friendly explanation and logged.
 ## Guardrails
 
 - **Addressed only via @mention** — no LLM call on every message.
+- **Untrusted context** — the replied-to message and recent history handed to the
+  model are explicitly labelled as data (only Discord's author/ID metadata is
+  trusted, for resolving *who* is meant); they never become a security decision.
 - **Per-user rate limiting** on writes (default 5 / 60s, configurable per guild).
 - **Confirmation** for bulk changes (≥ `BULK_CONFIRM_THRESHOLD` writes in one turn)
   and for every punitive action (typed `CONFIRM`).

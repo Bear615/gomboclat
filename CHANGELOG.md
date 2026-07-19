@@ -1,5 +1,37 @@
 # Changelog
 
+## Unreleased — conversation context
+
+Until now the bot saw only the text of the message that mentioned it — so "ban
+them" as a reply, "who is this?", or "undo what you just did" were impossible: the
+model had no referent. This adds a focused, security-safe context system.
+
+### Added
+- **Reply context** — when you @mention the bot as a *reply*, the replied-to
+  message is resolved (author, user ID, body) and handed to the model as the most
+  likely referent of "this"/"them"/"that". Deleted or unreadable targets are simply
+  skipped, never guessed.
+- **Recent history** — a short window of recent channel messages (oldest→newest,
+  default 5) is included for background so back-references like "undo what you just
+  did" resolve. The reply target is de-duplicated out of this window.
+- **`bot/context.py`** — `gather_context()` (the async Discord shell, best-effort
+  and non-blocking) plus a pure, fully-tested `MessageContext.render()` that emits
+  a labelled block: Discord author/ID metadata is marked **trusted** (for resolving
+  *who* is meant) while every message **body stays untrusted data**. Bodies are
+  wrapped in explicit `<replied_message>` tags, mentions are cleaned to `@name`,
+  and each body is length-capped to protect the token budget.
+- **`CONTEXT_ENABLED` / `CONTEXT_INCLUDE_REPLIES` / `CONTEXT_HISTORY_LIMIT` /
+  `CONTEXT_MAX_MESSAGE_CHARS`** env settings, surfaced in `/modstatus`.
+- 27 new unit tests (54 → 81) covering render structure/security framing, body
+  cleaning/truncation, history ordering + reply de-duplication, and every reply
+  resolution branch (cached, fetched, deleted, fetch-failure).
+
+### Note
+**No change to the security model.** Context only helps the model resolve *who* a
+request is about; every write it proposes is still re-validated against the real
+requester's live Discord permissions in `permissions.py`. Set `CONTEXT_ENABLED=false`
+to send only the raw message.
+
 ## Unreleased — update announcements
 
 The auto-update feature previously pulled code silently, with output only in the
