@@ -9,15 +9,15 @@
 </head>
 <body>
 <header>
-  <div id="banner">🛡&nbsp; A I &nbsp;M O D E R A T O R &nbsp;·&nbsp; C O N T R O L &nbsp;H U B</div>
+  <div class="brand">AI Moderator <span class="brand-sub">control hub</span></div>
   <nav>
-    <button class="tab active" data-tab="dashboard">⬤ Dashboard</button>
-    <button class="tab" data-tab="configure">⚙ Configure</button>
-    <button class="tab" data-tab="maintenance">⛭ Maintenance</button>
-    <span class="spacer"></span>
-    <span id="conn-lost" class="warn" hidden>⚠ connection lost</span>
-    <button id="btn-logout" class="ghost">Log out</button>
+    <button class="tab active" data-tab="dashboard">Dashboard</button>
+    <button class="tab" data-tab="configure">Configure</button>
+    <button class="tab" data-tab="maintenance">Maintenance</button>
   </nav>
+  <span class="spacer"></span>
+  <span id="conn-lost" class="warn" hidden>connection lost</span>
+  <button id="btn-logout" class="ghost">Log out</button>
 </header>
 <div id="notice" class="notice"></div>
 
@@ -41,12 +41,16 @@
       </aside>
       <div class="dash-main">
         <div class="controls">
-          <button id="btn-start" class="success">▶ Start</button>
-          <button id="btn-stop" class="danger">■ Stop</button>
-          <button id="btn-restart" class="warning">↻ Restart</button>
+          <button id="btn-start" class="success">Start</button>
+          <button id="btn-stop" class="danger">Stop</button>
+          <button id="btn-restart" class="warning">Restart</button>
+          <span class="spacer"></span>
           <button id="btn-clear" class="ghost">Clear feed</button>
         </div>
-        <div id="feed" class="log panel"></div>
+        <div class="panel log-panel">
+          <h2>Activity</h2>
+          <div id="feed" class="log"></div>
+        </div>
       </div>
     </div>
   </section>
@@ -83,23 +87,26 @@
       <label class="check"><input type="checkbox" id="cfg-auto_restart"> Auto-restart after update</label>
     </div>
     <div class="controls">
-      <button id="btn-save" class="primary">💾 Save to .env</button>
-      <button id="btn-save-restart" class="warning">↻ Save &amp; restart bot</button>
+      <button id="btn-save" class="primary">Save to .env</button>
+      <button id="btn-save-restart" class="warning">Save &amp; restart bot</button>
     </div>
   </section>
 
   <section id="pane-maintenance" class="pane">
     <div class="controls">
-      <button id="btn-install" class="primary">⤓ Install deps</button>
-      <button id="btn-reinstall" class="warning">♻ Reinstall deps</button>
-      <button id="btn-check">🔍 Check for updates</button>
-      <button id="btn-update" class="success">⬆ Update &amp; restart</button>
+      <button id="btn-install" class="primary">Install deps</button>
+      <button id="btn-reinstall">Reinstall deps</button>
+      <button id="btn-check">Check for updates</button>
+      <button id="btn-update" class="success">Update &amp; restart</button>
     </div>
     <div class="panel" id="git-panel">
       <h2>Repository</h2>
       <div id="git-line">—</div>
     </div>
-    <div id="maint-log" class="log panel"></div>
+    <div class="panel log-panel" id="maint-panel">
+      <h2>Output</h2>
+      <div id="maint-log" class="log"></div>
+    </div>
   </section>
 </main>
 </body>

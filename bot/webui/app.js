@@ -58,7 +58,7 @@ function renderStatus(s) {
     'Punitive : ' + (c.enable_punitive ? 'on (typed CONFIRM)' : 'off'),
     'Updates  : ' + updates,
   ].join('\n');
-  $('#warn').textContent = s.missing_secrets.length ? '⚠ set: ' + s.missing_secrets.join(', ') : '';
+  $('#warn').textContent = s.missing_secrets.length ? 'Missing config: ' + s.missing_secrets.join(', ') : '';
   $('#bot-error').textContent = s.error || '';
   $('#git-line').textContent = s.git || '—';
 }
