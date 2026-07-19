@@ -66,6 +66,26 @@ class ModeratorHub(App):
     TabbedContent { height: 1fr; }
     TabPane { padding: 1 2 0 2; }
 
+    /* ---- Buttons: flat coloured text ---- */
+    Button {
+        border: none;
+        height: 1;
+        min-width: 0;
+        padding: 0 1;
+        text-style: bold;
+        background: transparent;
+    }
+    Button.-default { background: transparent; color: $text; }
+    Button.-primary { background: transparent; color: $primary; }
+    Button.-success { background: transparent; color: $success; }
+    Button.-warning { background: transparent; color: $warning; }
+    Button.-error   { background: transparent; color: $error; }
+    Button:hover, Button.-default:hover, Button.-primary:hover, Button.-success:hover,
+    Button.-warning:hover, Button.-error:hover { border: none; background: $boost; }
+    Button.-active, Button.-default.-active, Button.-primary.-active, Button.-success.-active,
+    Button.-warning.-active, Button.-error.-active { border: none; background: $boost; }
+    Button:focus { text-style: bold reverse; }
+
     /* ---- Dashboard ---- */
     #status {
         width: 42; margin: 0 1 0 0; padding: 1 2;
@@ -74,7 +94,7 @@ class ModeratorHub(App):
     }
     #dash-right { width: 1fr; }
     #controls { height: auto; margin: 0 0 1 0; }
-    #controls Button { margin: 0 1 0 0; min-width: 14; }
+    #controls Button { margin: 0 2 0 0; }
     #feed, #maint-log {
         border: round $primary-darken-2; padding: 0 1; height: 1fr;
         background: $surface-darken-1;
@@ -99,12 +119,12 @@ class ModeratorHub(App):
         dock: bottom; height: auto; padding: 1 2;
         background: $panel; border-top: solid $primary-darken-2;
     }
-    #save-bar Button { margin: 0 1 0 0; min-width: 16; }
-    #save-hint { padding: 1 0 0 1; color: $text-muted; }
+    #save-bar Button { margin: 0 2 0 0; }
+    #save-hint { padding: 0 0 0 1; color: $text-muted; }
 
     /* ---- Maintenance ---- */
     #maint-buttons { height: auto; margin: 0 0 1 0; }
-    #maint-buttons Button { margin: 0 1 0 0; }
+    #maint-buttons Button { margin: 0 2 0 0; }
     #git-status {
         border: round $primary-darken-2; padding: 0 2; margin: 0 0 1 0;
         height: auto;
