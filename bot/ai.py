@@ -100,7 +100,7 @@ def tool_schemas(enable_punitive: bool) -> list[dict[str, Any]]:
                 "type": "object",
                 "properties": {
                     "name": {"type": "string"},
-                    "colour": {"type": "string", "description": "A named colour like 'purple' or a hex like '#A020F0'."},
+                    "colour": {"type": "string", "description": "A named colour like 'purple', a hex like '#A020F0' or '#f0f', 'rgb(160, 32, 240)', or 'random'."},
                     "permissions": {
                         "type": "array",
                         "items": {"type": "string"},

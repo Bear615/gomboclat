@@ -65,26 +65,64 @@ def _as_id(query: str) -> int | None:
     return int(s) if s.isdigit() else None
 
 
+def match_by_name(
+    query: str,
+    candidates: list[tuple[Any, list[str]]],
+    *,
+    kind: str = "match",
+    id_phrase: str = "its ID",
+) -> Any:
+    """Pick a single candidate whose name matches ``query``.
+
+    ``candidates`` is a list of ``(object, names)`` where ``names`` are the
+    strings the object can be addressed by (each will be lower-cased and
+    stripped here). Matching is case-insensitive and ignores a leading ``@``/``#``.
+
+    An **exact** match wins. If there's no exact match, a **unique**
+    case-insensitive *substring* match is accepted so ``"dave"`` resolves
+    ``"Dave the Great"``. Ambiguity in either tier, or no match at all, raises
+    ``ValueError`` with a friendly, kind-specific message.
+
+    Pure and Discord-free, so it's directly unit-testable.
+    """
+    q = str(query).strip().lstrip("@#").lower()
+    if not q:
+        raise ValueError(f"I couldn't find a {kind} matching {query!r}.")
+
+    def names_of(names: list[str]) -> list[str]:
+        return [n.strip().lower() for n in names if n and n.strip()]
+
+    exact = [obj for obj, names in candidates if q in names_of(names)]
+    if len(exact) == 1:
+        return exact[0]
+    if len(exact) > 1:
+        raise ValueError(f"{query!r} is ambiguous ({len(exact)} matches); use {id_phrase}.")
+
+    partial = [obj for obj, names in candidates if any(q in n for n in names_of(names))]
+    if len(partial) == 1:
+        return partial[0]
+    if len(partial) > 1:
+        raise ValueError(
+            f"{query!r} matches {len(partial)} {kind}s — please be more specific or use {id_phrase}."
+        )
+
+    raise ValueError(f"I couldn't find a {kind} matching {query!r}.")
+
+
 def resolve_member(guild: discord.Guild, query: str) -> discord.Member:
     mid = _as_id(query)
     if mid is not None:
         m = guild.get_member(mid)
         if m:
             return m
-    q = str(query).strip().lstrip("@").lower()
-    matches = [
-        m
+    candidates = [
+        (
+            m,
+            [m.name, m.nick or "", m.display_name, f"{m.name}#{m.discriminator}"],
+        )
         for m in guild.members
-        if m.name.lower() == q
-        or (m.nick or "").lower() == q
-        or m.display_name.lower() == q
-        or f"{m.name}#{m.discriminator}".lower() == q
     ]
-    if len(matches) == 1:
-        return matches[0]
-    if not matches:
-        raise ValueError(f"I couldn't find a member matching {query!r}.")
-    raise ValueError(f"{query!r} is ambiguous ({len(matches)} matches); use their ID.")
+    return match_by_name(query, candidates, kind="member", id_phrase="their ID")
 
 
 def resolve_role(guild: discord.Guild, query: str) -> discord.Role:
@@ -93,13 +131,8 @@ def resolve_role(guild: discord.Guild, query: str) -> discord.Role:
         r = guild.get_role(rid)
         if r:
             return r
-    q = str(query).strip().lstrip("@").lower()
-    matches = [r for r in guild.roles if r.name.lower() == q]
-    if len(matches) == 1:
-        return matches[0]
-    if not matches:
-        raise ValueError(f"I couldn't find a role matching {query!r}.")
-    raise ValueError(f"{query!r} is ambiguous ({len(matches)} matches); use its ID.")
+    candidates = [(r, [r.name]) for r in guild.roles]
+    return match_by_name(query, candidates, kind="role")
 
 
 def resolve_channel(
@@ -112,13 +145,8 @@ def resolve_channel(
         c = guild.get_channel(cid)
         if c:
             return c
-    q = str(query).strip().lstrip("#").lower()
-    matches = [c for c in guild.channels if c.name.lower() == q]
-    if len(matches) == 1:
-        return matches[0]
-    if not matches:
-        raise ValueError(f"I couldn't find a channel matching {query!r}.")
-    raise ValueError(f"{query!r} is ambiguous ({len(matches)} matches); use its ID.")
+    candidates = [(c, [c.name]) for c in guild.channels]
+    return match_by_name(query, candidates, kind="channel")
 
 
 def build_permissions(names: list[str] | None) -> discord.Permissions:

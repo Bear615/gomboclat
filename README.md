@@ -59,12 +59,23 @@ Mention the bot and describe what you want:
 @AI Moderator rename Dave to "On Vacation"
 ```
 
-The bot only runs the LLM when **@mentioned** — never on every message.
+The bot only runs the LLM when **@mentioned** — never on every message. While it
+works on your request it reacts 👀 on your message, then ✅ when done (or ⚠️ if
+something went wrong). DM it and it points you back to a server.
+
+Colours can be a name (`purple`, `coral`, `turquoise`, …), a hex code (`#A020F0`,
+`0xA020F0`, or the shorthand `#f0f`), a CSS-style `rgb(160, 32, 240)`, or `random`.
+Member/role/channel names resolve by an exact match first, then fall back to a
+unique partial match — so *"rename Dave"* finds **Dave the Great**.
 
 Slash commands:
 
+- `/help` — what the bot can do, with examples (anyone).
+- `/modstatus` — model, rate limit, log channel, whether the bot is active here, and its role position (anyone).
 - `/setlogchannel [#channel]` — set where audit logs are posted (needs Manage Server).
-- `/modstatus` — show the model, rate limit, log channel, and the bot's role position.
+- `/setratelimit [max_actions]` — set writes allowed per user per window; omit to reset to the default (needs Manage Server).
+- `/togglebot` — enable or disable the bot in this server (needs Manage Server).
+- `/auditlog [limit]` — show the most recent moderation actions in this server (needs Manage Server).
 
 ---
 
@@ -192,9 +203,12 @@ bot/
   tui.py           # Textual control hub (dashboard / configure / maintenance)
 tests/
   test_permissions.py   # incl. the adversarial cases
-  test_colours.py
+  test_colours.py       # colour parsing (names, hex, rgb, random)
+  test_resolve.py       # the pure member/role/channel name matcher
+  test_store.py         # per-guild settings + per-guild audit queries
 run.py             # entrypoint (TUI by default; --headless available)
 setup.sh           # one-shot Linux setup + launcher
+CHANGELOG.md
 .env.example
 requirements.txt
 ```
@@ -238,5 +252,7 @@ python -m pytest -q
 
 The permission tests cover the subset, hierarchy, target, Administrator-block,
 and owner-bypass rules, plus the adversarial cases (injection claiming ownership,
-"Owner"-named roles, granting perms you lack, acting above yourself).
+"Owner"-named roles, granting perms you lack, acting above yourself). The rest of
+the suite covers colour parsing, the name-resolution matcher, and the per-guild
+settings/audit stores.
 ```
