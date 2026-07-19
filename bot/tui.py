@@ -10,6 +10,10 @@ Everything happens here — you never need to touch the shell after launch:
 
 Textual and discord.py share one asyncio loop, so the bot runs as a managed task
 right inside this app (see control.BotController).
+
+Navigation: switch tabs with 1 / 2 / 3, move between fields with Tab /
+Shift+Tab, save the config from anywhere with Ctrl+S. All key bindings are
+listed in the footer.
 """
 
 from __future__ import annotations
@@ -18,6 +22,7 @@ import asyncio
 from datetime import datetime
 
 from textual.app import App, ComposeResult
+from textual.binding import Binding
 from textual.containers import Horizontal, Vertical, VerticalScroll
 from textual.widgets import (
     Button,
@@ -26,7 +31,6 @@ from textual.widgets import (
     Input,
     Label,
     RichLog,
-    Rule,
     Static,
     Switch,
     TabbedContent,
@@ -42,10 +46,16 @@ from .ratelimit import RateLimiter
 
 STATE_STYLE = {
     control.RUNNING: "[b green]● running[/]",
-    control.STARTING: "[b yellow]◐ starting…[/]",
-    control.STOPPING: "[b yellow]◑ stopping…[/]",
-    control.STOPPED: "[b grey62]○ stopped[/]",
-    control.ERROR: "[b red]✖ error[/]",
+    control.STARTING: "[b yellow]● starting…[/]",
+    control.STOPPING: "[b yellow]● stopping…[/]",
+    control.STOPPED: "[dim]○ stopped[/]",
+    control.ERROR: "[b red]● error[/]",
+}
+
+TAB_TITLES = {
+    "dashboard": "Dashboard",
+    "configure": "Configure",
+    "maintenance": "Maintenance",
 }
 
 
@@ -53,44 +63,66 @@ class ModeratorHub(App):
     CSS = """
     Screen { background: $surface; }
 
-    #banner {
-        height: 3; content-align: center middle;
-        color: $accent; text-style: bold;
-        background: $panel; border-bottom: heavy $accent;
-    }
-
     TabbedContent { height: 1fr; }
-    Tabs { background: $panel; }
+    TabPane { padding: 1 2 0 2; }
 
+    /* ---- Dashboard ---- */
     #status {
-        width: 42; border: round $primary; padding: 1 2; margin: 0 1 0 0;
+        width: 42; margin: 0 1 0 0; padding: 1 2;
+        border: round $primary-darken-2;
+        border-title-color: $text-muted; border-title-style: bold;
     }
     #dash-right { width: 1fr; }
-    #controls { height: auto; padding: 1 0 0 0; }
-    #controls Button { margin: 0 1 0 0; min-width: 12; }
-
+    #controls { height: auto; margin: 0 0 1 0; }
+    #controls Button { margin: 0 1 0 0; min-width: 14; }
     #feed, #maint-log {
-        border: round $primary; padding: 0 1; height: 1fr;
+        border: round $primary-darken-2; padding: 0 1; height: 1fr;
         background: $surface-darken-1;
+        border-title-color: $text-muted; border-title-style: bold;
     }
 
-    .section { border: round $primary-darken-1; padding: 1 2; margin: 0 0 1 0; height: auto; }
+    /* ---- Configure ---- */
+    #config-scroll { height: 1fr; }
+    .section {
+        border: round $primary-darken-2; padding: 1 2; margin: 0 0 1 0;
+        height: auto;
+        border-title-color: $text-muted; border-title-style: bold;
+    }
+    .section:focus-within {
+        border: round $accent;
+        border-title-color: $accent;
+    }
     .row { height: auto; margin: 0 0 1 0; }
-    .field { width: 30; padding: 1 0 0 0; color: $text-muted; }
-    .row Input { width: 46; }
-    .row Switch { margin: 0 0 0 0; }
+    .field { width: 32; padding: 1 0 0 0; color: $text-muted; }
+    .row Input { width: 48; }
+    #save-bar {
+        dock: bottom; height: auto; padding: 1 2;
+        background: $panel; border-top: solid $primary-darken-2;
+    }
+    #save-bar Button { margin: 0 1 0 0; min-width: 16; }
+    #save-hint { padding: 1 0 0 1; color: $text-muted; }
 
-    #maint-buttons { height: auto; padding: 0 0 1 0; }
+    /* ---- Maintenance ---- */
+    #maint-buttons { height: auto; margin: 0 0 1 0; }
     #maint-buttons Button { margin: 0 1 0 0; }
-    #save-row { height: auto; padding: 1 0 0 0; }
+    #git-status {
+        border: round $primary-darken-2; padding: 0 2; margin: 0 0 1 0;
+        height: auto;
+        border-title-color: $text-muted; border-title-style: bold;
+    }
     """
 
     BINDINGS = [
-        ("s", "start", "Start"),
-        ("x", "stop", "Stop"),
-        ("r", "restart", "Restart"),
-        ("c", "clear_feed", "Clear feed"),
-        ("q", "quit", "Quit"),
+        Binding("1", "show_tab('dashboard')", "Dashboard"),
+        Binding("2", "show_tab('configure')", "Configure"),
+        Binding("3", "show_tab('maintenance')", "Maintenance"),
+        Binding("s", "start", "Start bot", show=False),
+        Binding("x", "stop", "Stop bot", show=False),
+        Binding("r", "restart", "Restart bot", show=False),
+        Binding("ctrl+s", "save", "Save config", priority=True),
+        Binding("c", "clear_feed", "Clear feed", show=False),
+        Binding("escape", "unfocus", "Unfocus field", show=False),
+        Binding("q", "quit", "Quit"),
     ]
 
     def __init__(self) -> None:
@@ -116,25 +148,24 @@ class ModeratorHub(App):
 
     def compose(self) -> ComposeResult:
         yield Header(show_clock=True)
-        yield Static("🛡  A I   M O D E R A T O R   ·   C O N T R O L   H U B", id="banner")
         with TabbedContent(initial="dashboard"):
-            with TabPane("⬤ Dashboard", id="dashboard"):
+            with TabPane("Dashboard", id="dashboard"):
                 with Horizontal():
                     yield StatusPanel(id="status")
                     with Vertical(id="dash-right"):
                         with Horizontal(id="controls"):
-                            yield Button("▶ Start", id="btn-start", variant="success")
-                            yield Button("■ Stop", id="btn-stop", variant="error")
-                            yield Button("↻ Restart", id="btn-restart", variant="warning")
+                            yield Button("Start", id="btn-start", variant="success")
+                            yield Button("Stop", id="btn-stop", variant="error")
+                            yield Button("Restart", id="btn-restart", variant="warning")
                         yield RichLog(id="feed", markup=True, wrap=True, highlight=False)
-            with TabPane("⚙ Configure", id="configure"):
+            with TabPane("Configure", id="configure"):
                 yield from self._compose_configure()
-            with TabPane("⛭ Maintenance", id="maintenance"):
+            with TabPane("Maintenance", id="maintenance"):
                 yield from self._compose_maintenance()
         yield Footer()
 
     def _compose_configure(self) -> ComposeResult:
-        with VerticalScroll():
+        with VerticalScroll(id="config-scroll"):
             with Vertical(classes="section", id="sec-secrets"):
                 yield from self._field("Discord bot token", Input(password=True, id="cfg-discord_token"))
             with Vertical(classes="section", id="sec-llm"):
@@ -158,18 +189,19 @@ class ModeratorHub(App):
                 yield from self._field("Auto-update from GitHub", Switch(id="cfg-auto_update"))
                 yield from self._field("Update check interval (min)", Input(id="cfg-auto_update_interval"))
                 yield from self._field("Auto-restart after update", Switch(id="cfg-auto_restart"))
-            with Horizontal(id="save-row"):
-                yield Button("💾 Save to .env", id="btn-save", variant="primary")
-                yield Button("↻ Save & restart bot", id="btn-save-restart", variant="warning")
+        with Horizontal(id="save-bar"):
+            yield Button("Save to .env", id="btn-save", variant="primary")
+            yield Button("Save & restart bot", id="btn-save-restart", variant="warning")
+            yield Static("Ctrl+S saves from anywhere · blank secret fields keep their stored value", id="save-hint")
 
     def _compose_maintenance(self) -> ComposeResult:
         with Vertical():
             with Horizontal(id="maint-buttons"):
-                yield Button("⤓ Install deps", id="btn-install", variant="primary")
-                yield Button("♻ Reinstall deps", id="btn-reinstall", variant="warning")
-                yield Button("🔍 Check for updates", id="btn-check", variant="default")
-                yield Button("⬆ Update & restart", id="btn-update", variant="success")
-            yield Static("", id="git-status", classes="section")
+                yield Button("Install deps", id="btn-install", variant="primary")
+                yield Button("Reinstall deps", id="btn-reinstall", variant="warning")
+                yield Button("Check for updates", id="btn-check", variant="default")
+                yield Button("Update & restart", id="btn-update", variant="success")
+            yield Static("", id="git-status")
             yield RichLog(id="maint-log", markup=True, wrap=True, highlight=False)
 
     def _field(self, label: str, widget) -> ComposeResult:
@@ -181,11 +213,15 @@ class ModeratorHub(App):
 
     def on_mount(self) -> None:
         self.title = "AI Moderator — Control Hub"
-        self.sub_title = "manage everything from here"
+        self.sub_title = TAB_TITLES["dashboard"]
         self._loop = asyncio.get_running_loop()
 
-        # Section titles.
+        # Panel titles.
         titles = {
+            "status": "Overview",
+            "feed": "Activity",
+            "maint-log": "Output",
+            "git-status": "Repository",
             "sec-secrets": "Secrets",
             "sec-llm": "LLM (OpenAI-compatible)",
             "sec-limits": "Limits & safety",
@@ -196,7 +232,6 @@ class ModeratorHub(App):
                 self.query_one(f"#{wid}").border_title = title
             except Exception:
                 pass
-        self.query_one("#git-status", Static).border_title = "Repository"
 
         self._populate_config_form()
         self._refresh_status()
@@ -206,7 +241,10 @@ class ModeratorHub(App):
         for rec in reversed(self.audit.recent(15)):
             feed.write(self._format_record(rec))
         if self.config.missing_secrets():
-            feed.write("[yellow]No tokens set yet — open the Configure tab, fill them in, then press Start.[/]")
+            feed.write(
+                "[yellow]No tokens set yet — press 2 to open Configure, fill them in, "
+                "then Ctrl+S to save and press Start.[/]"
+            )
 
         # Wire the audit log into the live feed (loop-safe).
         self.audit.subscribe(lambda rec: self._enqueue("audit", rec))
@@ -224,6 +262,11 @@ class ModeratorHub(App):
             await self.controller.stop()
         except Exception:
             pass
+
+    def on_tabbed_content_tab_activated(self, event: TabbedContent.TabActivated) -> None:
+        pane_id = getattr(event.pane, "id", None)
+        if pane_id in TAB_TITLES:
+            self.sub_title = TAB_TITLES[pane_id]
 
     # ------------------------------------------------------------------ #
     # Bot builder + hooks
@@ -270,7 +313,7 @@ class ModeratorHub(App):
             elif kind == "status":
                 feed.write(f"[dim]{self._ts()} · {payload}[/]")
             elif kind == "seen":
-                feed.write(f"[cyan]{self._ts()} · 📨 {payload}[/]")
+                feed.write(f"[cyan]{self._ts()} · request · {payload}[/]")
             elif kind == "audit":
                 feed.write(self._format_record(payload))
 
@@ -299,9 +342,12 @@ class ModeratorHub(App):
         elif bid == "btn-update":
             self.run_worker(self._update_now(), group="maint", exclusive=True)
 
+    def action_show_tab(self, tab: str) -> None:
+        self.query_one(TabbedContent).active = tab
+
     def action_start(self) -> None:
         if self.config.missing_secrets():
-            self.notify("Set your tokens in the Configure tab first.", severity="warning")
+            self.notify("Set your tokens in the Configure tab first (press 2).", severity="warning")
             return
         self.run_worker(self.controller.start(), group="bot", exclusive=True)
 
@@ -310,6 +356,13 @@ class ModeratorHub(App):
 
     def action_restart(self) -> None:
         self.run_worker(self.controller.restart(), group="bot", exclusive=True)
+
+    def action_save(self) -> None:
+        self._save_config(restart=False)
+
+    def action_unfocus(self) -> None:
+        """Escape drops focus out of a field so 1/2/3 tab switching works again."""
+        self.set_focus(None)
 
     def action_clear_feed(self) -> None:
         self.query_one("#feed", RichLog).clear()
@@ -456,17 +509,17 @@ class ModeratorHub(App):
         if status is None:
             branch = await maintenance.git_current_branch()
             local = (await maintenance.run(["git", "rev-parse", "--short", "HEAD"])).output.strip()
-            widget.update(f"Branch: [b]{branch or '—'}[/]   Commit: [b]{local or '—'}[/]")
+            widget.update(f"Branch [b]{branch or '—'}[/]   Commit [b]{local or '—'}[/]")
             return
         if status.error:
-            widget.update(f"Branch: [b]{status.branch or '—'}[/]   [yellow]{status.error}[/]")
+            widget.update(f"Branch [b]{status.branch or '—'}[/]   [yellow]{status.error}[/]")
         else:
             state = (
-                f"[green]{status.behind} behind[/]" if status.update_available else "[green]up to date[/]"
+                f"[yellow]{status.behind} behind[/]" if status.update_available else "[green]up to date[/]"
             )
             widget.update(
-                f"Branch: [b]{status.branch}[/]   Local: [b]{status.local_rev}[/]   "
-                f"Remote: [b]{status.remote_rev}[/]   {state}"
+                f"Branch [b]{status.branch}[/]   Local [b]{status.local_rev}[/]   "
+                f"Remote [b]{status.remote_rev}[/]   {state}"
             )
 
     # ------------------------------------------------------------------ #
@@ -488,10 +541,10 @@ class ModeratorHub(App):
         return datetime.now().strftime("%H:%M:%S")
 
     def _format_record(self, rec: AuditRecord) -> str:
-        tag = "[green]✅ EXECUTED[/]" if rec.allowed else "[red]⛔ REFUSED [/]"
+        tag = "[green]✔ executed[/]" if rec.allowed else "[red]✖ refused [/]"
         return (
             f"{tag} [b]{rec.action}[/b] · {rec.requester_name} "
-            f"[dim]({rec.requester_id})[/] · {rec.guild_name}\n    {rec.outcome}"
+            f"[dim]({rec.requester_id})[/] · {rec.guild_name}\n    [dim]{rec.outcome}[/]"
         )
 
 
@@ -499,32 +552,32 @@ class StatusPanel(Static):
     def render_state(self, *, state, error, connected, user, config: Config, guilds) -> None:
         dot = STATE_STYLE.get(state, state)
         secrets = config.missing_secrets()
-        auto = "on" if config.auto_update else "off"
-        auto += f" · every {config.auto_update_interval}m" if config.auto_update else ""
-        auto += " · auto-restart" if (config.auto_update and config.auto_restart) else ""
+        if config.auto_update:
+            auto = f"on · every {config.auto_update_interval}m"
+            if config.auto_restart:
+                auto += " · auto-restart"
+        else:
+            auto = "[dim]off[/]"
         lines = [
             "[b]Bot[/b]",
-            f"  State   : {dot}",
-            f"  Link    : {'[green]connected[/]' if connected else '[grey62]—[/]'}",
-            f"  User    : {user}",
-            f"  Guilds  : {len(guilds)}",
+            f"  State       {dot}",
+            f"  Connection  {'[green]connected[/]' if connected else '[dim]offline[/]'}",
+            f"  Account     {user}",
+            f"  Guilds      {len(guilds)}",
             "",
-            "[b]Config[/b]",
-            f"  Model   : {config.model}",
-            f"  Rate    : {config.rate_limit_max} / {config.rate_limit_window}s",
-            f"  Punitive: {'on (typed CONFIRM)' if config.enable_punitive else 'off'}",
-            f"  Updates : {auto}",
+            "[b]Configuration[/b]",
+            f"  Model       {config.model or '[dim]not set[/]'}",
+            f"  Rate limit  {config.rate_limit_max} writes / {config.rate_limit_window}s",
+            f"  Punitive    {'[yellow]on[/] (typed CONFIRM)' if config.enable_punitive else '[dim]off[/]'}",
+            f"  Updates     {auto}",
         ]
         if secrets:
-            lines += ["", f"[yellow]⚠ set: {', '.join(secrets)}[/]"]
+            lines += ["", f"[yellow]⚠ Missing: {', '.join(secrets)}[/]"]
         if error:
             lines += ["", f"[red]{error[:120]}[/]"]
         if guilds:
             lines += ["", "[b]Servers[/b]"] + [f"  • {g}" for g in guilds[:8]]
         self.update("\n".join(lines))
-
-    def on_mount(self) -> None:
-        self.border_title = "Overview"
 
 
 def run_tui() -> None:
