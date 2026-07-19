@@ -334,3 +334,74 @@ def validate_punitive(
         check_requester_capability(ctx, required),
         check_target(ctx, target_top_position, target_is_self),
     )
+
+
+# --------------------------------------------------------------------------- #
+# Mini-admin validators (new tools) -- all compose the primitives above, so the
+# "clamped to the requester's own permissions" invariant and the Administrator
+# hard-block are preserved automatically. No bot super-admin path exists.
+# --------------------------------------------------------------------------- #
+
+
+def validate_capability(ctx: RequestContext, required: str) -> Decision:
+    """Generic single-permission gate for actions with no role/target hierarchy of
+    their own (delete/purge/pin messages, edit/delete channels, invites, unban,
+    ban-list, audit-log reads, guild edits, emoji management).
+
+    The requester must personally hold ``required`` (owner is exempt). This is the
+    whole gate for these tools: they never grant permissions, so no subset check is
+    needed, and their targets carry no role rank to compare against.
+    """
+    return check_requester_capability(ctx, required)
+
+
+def validate_delete_role(ctx: RequestContext, role_position: int) -> Decision:
+    """Validate deleting an existing role.
+
+    Requires ``manage_roles`` and that the role sit below both the bot's and (for
+    non-owners) the requester's top role -- you can't delete a role that outranks
+    you. No subset/Administrator check: deletion removes power, never grants it.
+    """
+    return _first_refusal(
+        check_requester_capability(ctx, "manage_roles"),
+        check_role_hierarchy(role_position, ctx, "that role"),
+    )
+
+
+def validate_edit_role(
+    ctx: RequestContext,
+    requested_perms: discord.Permissions,
+    role_position: int,
+) -> Decision:
+    """Validate editing an existing role's name/colour/flags/permissions/position.
+
+    Identical discipline to :func:`validate_create_role`: the role's *resulting*
+    permissions are Administrator-blocked and subset-checked against the requester,
+    so an edit can never raise a role's powers above the requester's own. Callers
+    pass ``role_position = max(current_position, intended_new_position)`` so you can
+    neither edit a role that already outranks you nor move one above yourself.
+    """
+    return _first_refusal(
+        check_administrator_block(requested_perms),
+        check_requester_capability(ctx, "manage_roles"),
+        check_permission_subset(requested_perms, ctx),
+        check_role_hierarchy(role_position, ctx, "that role"),
+    )
+
+
+def validate_member_action(
+    ctx: RequestContext,
+    required: str,
+    target_top_position: int,
+    target_is_self: bool,
+) -> Decision:
+    """Validate a member-targeted action (voice move/mute/deafen, remove-timeout).
+
+    Requires the gating permission and that the target rank below the requester.
+    Unlike :func:`validate_punitive`, acting on *yourself* is allowed (e.g. moving
+    or muting yourself in voice), because these actions are not punitive.
+    """
+    return _first_refusal(
+        check_requester_capability(ctx, required),
+        check_target(ctx, target_top_position, target_is_self),
+    )

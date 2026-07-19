@@ -19,9 +19,14 @@ from .ai import Agent
 from .audit import AuditLogger
 from .config import Config, GuildSettingsStore
 from .ratelimit import RateLimiter
-from .tools import ToolContext
+from .tools import RecalledMessage, RepliedMessage, ToolContext
 
 _YES = {"yes", "y", "yeah", "yep", "confirm", "do it", "ok", "okay", "sure"}
+
+# Conversational recall (per-user message memory).
+_RECALL_LIMIT = 5      # how many of the requester's own recent messages to surface
+_RECALL_SCAN = 100     # how far back in channel history to scan for them
+_MAX_RECALL_TEXT = 500  # truncate recalled/replied text to bound context size
 
 
 @dataclass
@@ -41,6 +46,63 @@ def _strip_mentions(message: discord.Message, me: discord.ClientUser) -> str:
     content = message.content or ""
     content = re.sub(rf"<@!?{me.id}>", "", content)
     return content.strip()
+
+
+async def _recall_user_messages(
+    message: discord.Message,
+    requester: discord.Member,
+    limit: int = _RECALL_LIMIT,
+    scan: int = _RECALL_SCAN,
+) -> list[RecalledMessage]:
+    """Fetch the requester's OWN most-recent messages in this channel for context.
+
+    Scans recent channel history (newest first), keeps only messages authored by the
+    requester, skips the invoking message itself, and returns up to ``limit`` of them
+    oldest→newest. Best-effort: needs Read Message History; on any failure returns [].
+    The recalled text is UNTRUSTED and surfaced to the model only as background.
+    """
+    channel = message.channel
+    if not hasattr(channel, "history"):
+        return []
+    out: list[RecalledMessage] = []
+    try:
+        async for m in channel.history(limit=scan):
+            if m.id == message.id or m.author.id != requester.id:
+                continue
+            text = (m.content or "").strip() or "[attachment/embed, no text]"
+            out.append(RecalledMessage(text=text[:_MAX_RECALL_TEXT], created_at=m.created_at, message_id=m.id))
+            if len(out) >= limit:
+                break
+    except (discord.Forbidden, discord.HTTPException):
+        return []
+    out.reverse()  # chronological
+    return out
+
+
+async def _resolve_replied_to(message: discord.Message) -> RepliedMessage | None:
+    """If the invoking message is a reply, resolve the message it replied to.
+
+    Included regardless of who wrote it (that's the point of a reply) — but still
+    UNTRUSTED. Uses the cached ``resolved`` message when available, else fetches it;
+    returns None if the reference is missing or the message can't be fetched.
+    """
+    ref = message.reference
+    if ref is None or ref.message_id is None:
+        return None
+    src = ref.resolved if isinstance(ref.resolved, discord.Message) else None
+    if src is None:
+        try:
+            src = await message.channel.fetch_message(ref.message_id)
+        except (discord.NotFound, discord.Forbidden, discord.HTTPException):
+            return None
+    content = (src.content or "").strip() or "[attachment/embed, no text]"
+    return RepliedMessage(
+        author_display=src.author.display_name,
+        author_id=src.author.id,
+        is_bot=bool(src.author.bot),
+        content=content[:_MAX_RECALL_TEXT],
+        message_id=src.id,
+    )
 
 
 def create_bot(
@@ -122,6 +184,11 @@ def create_bot(
         if settings.log_channel_id:
             log_channel = message.guild.get_channel(settings.log_channel_id)
 
+        # Conversational context: the requester's own recent messages, plus (if this
+        # is a reply) the replied-to message by any author. Both are UNTRUSTED.
+        recent = await _recall_user_messages(message, requester)
+        replied = await _resolve_replied_to(message)
+
         ctx = ToolContext(
             guild=message.guild,
             requester=requester,
@@ -134,6 +201,8 @@ def create_bot(
             raw_message=text,
             confirm=make_confirm(message),
             log_channel=log_channel,
+            recent_messages=recent,
+            replied_to=replied,
         )
 
         try:
