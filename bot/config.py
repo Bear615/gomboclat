@@ -216,3 +216,39 @@ class GuildSettingsStore:
         current = self.get(guild_id)
         current.log_channel_id = channel_id
         self.upsert(current)
+
+
+class BotStateStore:
+    """Thread-safe key/value store for process-wide bot state (not per-guild).
+
+    Same DB file and locking discipline as ``GuildSettingsStore``. Used to persist
+    things that must survive restarts — e.g. the last git SHA we ran and the current
+    changelog version — so the bot can tell when it has been updated.
+    """
+
+    def __init__(self, db_path: str):
+        Path(db_path).parent.mkdir(parents=True, exist_ok=True)
+        self._conn = sqlite3.connect(db_path, check_same_thread=False)
+        self._conn.row_factory = sqlite3.Row
+        self._lock = threading.Lock()
+        with self._lock:
+            self._conn.execute(
+                "CREATE TABLE IF NOT EXISTS bot_state (key TEXT PRIMARY KEY, value TEXT)"
+            )
+            self._conn.commit()
+
+    def get(self, key: str, default: str | None = None) -> str | None:
+        with self._lock:
+            row = self._conn.execute(
+                "SELECT value FROM bot_state WHERE key = ?", (key,)
+            ).fetchone()
+        return row["value"] if row is not None else default
+
+    def set(self, key: str, value: str) -> None:
+        with self._lock:
+            self._conn.execute(
+                "INSERT INTO bot_state (key, value) VALUES (?, ?) "
+                "ON CONFLICT(key) DO UPDATE SET value = excluded.value",
+                (key, str(value)),
+            )
+            self._conn.commit()

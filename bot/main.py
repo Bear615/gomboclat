@@ -15,9 +15,10 @@ import discord
 from discord import app_commands
 from discord.ext import commands
 
+from . import updatenotice
 from .ai import Agent
 from .audit import AuditLogger
-from .config import Config, GuildSettingsStore
+from .config import BotStateStore, Config, GuildSettingsStore
 from .ratelimit import RateLimiter
 from .tools import RecalledMessage, RepliedMessage, ToolContext
 
@@ -122,6 +123,10 @@ def create_bot(
 
     bot = commands.Bot(command_prefix="!moderator-unused-prefix ", intents=intents, help_command=None)
 
+    # Persistent bot state (git version tracking for the update changelog).
+    state_store = BotStateStore(config.db_path)
+    update_checked = False  # run the update-notice check once per process
+
     # -- confirmation flow ------------------------------------------------- #
     def make_confirm(message: discord.Message) -> Callable[..., Awaitable[bool]]:
         async def confirm(prompt: str, *, required: str | None = None) -> bool:
@@ -146,6 +151,7 @@ def create_bot(
     # -- events ------------------------------------------------------------ #
     @bot.event
     async def on_ready() -> None:
+        nonlocal update_checked
         try:
             await bot.tree.sync()
         except Exception:
@@ -153,6 +159,14 @@ def create_bot(
         if hooks.on_ready and bot.user:
             hooks.on_ready(bot.user, list(bot.guilds))
         hooks.status(f"Connected as {bot.user} — watching {len(bot.guilds)} guild(s).")
+        # If we were updated since last boot, post the changelog to each log channel.
+        # Guarded so reconnects (on_ready can fire more than once) don't re-announce.
+        if not update_checked:
+            update_checked = True
+            try:
+                await updatenotice.announce_if_updated(bot, state_store, settings_store, status=hooks.status)
+            except Exception as e:
+                hooks.status(f"Update-notice check failed: {e}")
 
     @bot.event
     async def on_message(message: discord.Message) -> None:
@@ -246,6 +260,7 @@ def create_bot(
         me = interaction.guild.me
         await interaction.response.send_message(
             f"**AI Moderator status**\n"
+            f"• Version: `{updatenotice.current_version(state_store)}`\n"
             f"• Model: `{config.model}`\n"
             f"• Log channel: {log_ch.mention if log_ch else '_not set_ (use /setlogchannel)'}\n"
             f"• Rate limit: {limit} write actions / {config.rate_limit_window}s per user\n"

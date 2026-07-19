@@ -110,6 +110,16 @@ Three tabs:
   upstream and, if there are new commits, pulls and reinstalls automatically; with
   **auto-restart** on, it restarts the bot to apply the update. Interval configurable.
 
+### Update announcements
+
+Whenever the bot restarts on a newer commit than it last ran (from auto-update, a
+manual **Update & restart**, or any `git pull` + restart), it posts a **changelog**
+to every server's configured log channel and **pings that server's owner** (and
+whoever added the bot, when the audit log allows). The header is a version that
+climbs by itself — `v0.0.1` → `v0.0.2` → … one bump per update — and the body lists
+the commit subjects the update brought in. The current version also shows in
+`/modstatus`. No announcement fires on a plain restart with no new commits.
+
 Keys: `s` start · `x` stop · `r` restart · `c` clear feed · `q` quit.
 
 Prefer no UI? `./setup.sh --headless` runs the bot with plain console logging and

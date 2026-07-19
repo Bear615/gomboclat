@@ -113,6 +113,26 @@ async def git_pull(on_line: LineSink = None) -> CommandResult:
     return await run(["git", "pull", "--ff-only"], on_line)
 
 
+async def git_head_sha() -> str:
+    """Full SHA of the current HEAD, or '' if git isn't available / not a repo."""
+    res = await run(["git", "rev-parse", "HEAD"])
+    return res.output.strip() if res.ok else ""
+
+
+async def git_log_subjects(old: str, new: str = "HEAD", limit: int = 20) -> list[str]:
+    """Commit subjects in ``old..new`` (newest first, merges excluded) — the changelog
+    of what an update brought in. Empty if the range can't be resolved.
+    """
+    if not old:
+        return []
+    res = await run(
+        ["git", "log", "--no-merges", f"--max-count={limit}", "--pretty=format:%s", f"{old}..{new}"]
+    )
+    if not res.ok or not res.output.strip():
+        return []
+    return [ln.strip() for ln in res.output.splitlines() if ln.strip()]
+
+
 # --------------------------------------------------------------------------- #
 # Dependencies
 # --------------------------------------------------------------------------- #
