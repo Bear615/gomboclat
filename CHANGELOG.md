@@ -43,6 +43,27 @@ securely at https://dcgsl.duckdns.org.
 - **No change to the Discord permission model** — the web hub is an operator
   console; moderation writes are still validated in `bot/permissions.py`.
 
+## Unreleased — observable auto-update
+
+Auto-update ran on a background loop that only ever spoke up when it actually
+pulled new commits. If it was switched off, or if a check failed (no upstream
+tracking branch, a failed `git fetch`), the loop stayed completely silent — so
+"disabled", "idle and up to date", and "silently broken" all looked identical
+from the Maintenance panel. That's exactly why it was impossible to tell whether
+auto-update was working.
+
+### Changed
+- The auto-update loop now logs the outcome of **every** cycle: a one-time
+  "auto-update is off" hint when disabled, a dim "up to date" heartbeat when
+  there's nothing to pull, and a visible warning when a check can't run.
+- `UpdateStatus.error` (missing upstream, failed fetch) is now surfaced in the
+  background loop instead of being swallowed — the manual "Check for updates"
+  button already showed it; the automatic path now matches.
+- The background check no longer streams raw `git fetch` output into the panel
+  on every cycle; it emits one concise summary line instead.
+- The git-status widget is refreshed after each automatic check, so branch /
+  commit / behind-count stay live without pressing a button.
+
 ## Unreleased — conversation context
 
 Until now the bot saw only the text of the message that mentioned it — so "ban
