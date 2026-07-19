@@ -110,6 +110,16 @@ Three tabs:
   upstream and, if there are new commits, pulls and reinstalls automatically; with
   **auto-restart** on, it restarts the bot to apply the update. Interval configurable.
 
+### Update announcements
+
+Whenever the bot restarts on a newer commit than it last ran (from auto-update, a
+manual **Update & restart**, or any `git pull` + restart), it posts a **changelog**
+to every server's configured log channel and **pings that server's owner** (and
+whoever added the bot, when the audit log allows). The header is a version that
+climbs by itself — `v0.0.1` → `v0.0.2` → … one bump per update — and the body lists
+the commit subjects the update brought in. The current version also shows in
+`/modstatus`. No announcement fires on a plain restart with no new commits.
+
 Keys: `s` start · `x` stop · `r` restart · `c` clear feed · `q` quit.
 
 Prefer no UI? `./setup.sh --headless` runs the bot with plain console logging and
@@ -117,19 +127,47 @@ no hub (config comes straight from `.env`).
 
 ---
 
-## What it can do (v1)
+## What it can do
 
 **Read-only (context gathering):** `get_member_info`, `list_roles`,
-`list_channels`, `get_my_permissions`.
+`list_channels`, `get_my_permissions`, `list_bans`, `read_audit_log`.
 
-**Writes (each validated before execution):** `create_role`, `assign_role` /
-`remove_role`, `change_nickname`, `create_channel`, `set_channel_overwrite`.
+**Writes (each validated before execution):**
+
+- *Roles:* `create_role`, `edit_role`, `assign_role` / `remove_role`.
+- *Channels:* `create_channel`, `edit_channel`, `set_slowmode`,
+  `set_channel_overwrite`, `create_invite`.
+- *Messages:* `delete_message`, `purge_messages`, `pin_message` / `unpin_message`.
+- *Members:* `change_nickname`, `move_member` (voice), `server_mute` /
+  `server_unmute`, `server_deafen` / `server_undeafen`, `untimeout_member`,
+  `unban_member`.
+- *Expressions:* `delete_emoji`.
+
+Every write still gates on the **requester's own** Discord permission (e.g.
+`manage_messages` to delete a message, `move_members` to move someone in voice)
+and, for member-targeted actions, the requester must outrank the target. The bot
+never lets anyone exceed their real powers — the "mini-admin" is you, clamped.
+
+**Destructive (typed-confirmation gated):** `delete_channel`, `delete_role`,
+and `edit_guild` (rename the server) each require an explicit **typed
+confirmation** — reply with exactly `CONFIRM <id>` — so they're never executed
+straight off an LLM parse. `purge_messages` asks for a `yes`/`no` first and is
+capped at 100 messages.
 
 **Punitive (enabled, but gated):** `kick_member`, `ban_member`,
 `timeout_member`. These are irreversible, so they require an explicit **typed
 confirmation** — the bot asks you to reply with exactly `CONFIRM <member-id>`.
 They are never executed straight off an LLM parse. Disable them entirely with
 `ENABLE_PUNITIVE=false`.
+
+### Conversational context
+
+When you @mention the bot, it pulls in **your last few messages** in that channel
+so you can refer back to them (*"@AI Moderator do what I described above"*). And
+if your request is a **reply** to another message — by anyone — that message is
+included too, so *"@AI Moderator delete this"* or *"pin this"* (as a reply) just
+works. All of that recalled/replied text is treated as **untrusted data**: it's
+context for the model, never instructions, and never a claim about who you are.
 
 ### "Access to only this channel"
 

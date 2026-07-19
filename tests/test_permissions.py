@@ -291,5 +291,119 @@ def test_punitive_without_permission_refused():
     assert d.check == "requester_capability"
 
 
+# --------------------------------------------------------------------------- #
+# Mini-admin validators
+# --------------------------------------------------------------------------- #
+
+
+def test_capability_gate_refuses_without_flag():
+    ctx = mk_ctx(requester_perms=discord.Permissions(send_messages=True))
+    d = perm.validate_capability(ctx, "manage_messages")
+    assert not d.ok
+    assert d.check == "requester_capability"
+
+
+def test_capability_gate_allows_with_flag():
+    ctx = mk_ctx(requester_perms=discord.Permissions(manage_messages=True))
+    assert perm.validate_capability(ctx, "manage_messages").ok
+
+
+def test_capability_gate_owner_bypass():
+    ctx = mk_ctx(is_owner=True, requester_perms=discord.Permissions.none())
+    assert perm.validate_capability(ctx, "manage_guild").ok
+
+
+# -- delete_role -- #
+
+
+def test_delete_role_needs_manage_roles():
+    ctx = mk_ctx(requester_perms=discord.Permissions.none(), requester_top=5, bot_top=10)
+    d = perm.validate_delete_role(ctx, role_position=3)
+    assert not d.ok
+    assert d.check == "requester_capability"
+
+
+def test_delete_role_above_requester_refused():
+    ctx = mk_ctx(requester_perms=discord.Permissions(manage_roles=True), requester_top=5, bot_top=10)
+    d = perm.validate_delete_role(ctx, role_position=6)
+    assert not d.ok
+    assert d.check == "role_hierarchy"
+
+
+def test_delete_role_below_requester_allowed():
+    ctx = mk_ctx(requester_perms=discord.Permissions(manage_roles=True), requester_top=5, bot_top=10)
+    assert perm.validate_delete_role(ctx, role_position=3).ok
+
+
+def test_delete_role_owner_still_bound_by_bot_hierarchy():
+    ctx = mk_ctx(is_owner=True, requester_perms=discord.Permissions.all(), bot_top=10)
+    d = perm.validate_delete_role(ctx, role_position=11)
+    assert not d.ok
+    assert d.check == "bot_hierarchy"
+
+
+# -- edit_role -- #
+
+
+def test_edit_role_admin_block_even_for_owner():
+    ctx = mk_ctx(is_owner=True, requester_perms=discord.Permissions.all(), bot_top=10)
+    d = perm.validate_edit_role(ctx, discord.Permissions(administrator=True), role_position=1)
+    assert not d.ok
+    assert d.check == "administrator_block"
+
+
+def test_edit_role_subset_refused_for_perm_you_lack():
+    ctx = mk_ctx(requester_perms=discord.Permissions(manage_roles=True), requester_top=5, bot_top=10)
+    d = perm.validate_edit_role(ctx, discord.Permissions(mention_everyone=True), role_position=3)
+    assert not d.ok
+    assert d.check == "permission_subset"
+
+
+def test_edit_role_hierarchy_refused_above_self():
+    ctx = mk_ctx(requester_perms=discord.Permissions(manage_roles=True), requester_top=5, bot_top=10)
+    d = perm.validate_edit_role(ctx, discord.Permissions.none(), role_position=6)
+    assert not d.ok
+    assert d.check == "role_hierarchy"
+
+
+def test_edit_role_happy_path_no_perm_change():
+    # Editing just name/colour (empty requested perms) on a role below you is allowed.
+    ctx = mk_ctx(requester_perms=discord.Permissions(manage_roles=True), requester_top=5, bot_top=10)
+    assert perm.validate_edit_role(ctx, discord.Permissions.none(), role_position=3).ok
+
+
+# -- validate_member_action (voice / untimeout): unlike punitive, self is allowed -- #
+
+
+def test_member_action_needs_capability():
+    ctx = mk_ctx(requester_perms=discord.Permissions.none(), requester_top=5)
+    d = perm.validate_member_action(ctx, "move_members", target_top_position=2, target_is_self=False)
+    assert not d.ok
+    assert d.check == "requester_capability"
+
+
+def test_member_action_peer_or_higher_refused():
+    ctx = mk_ctx(requester_perms=discord.Permissions(mute_members=True), requester_top=5)
+    assert not perm.validate_member_action(ctx, "mute_members", target_top_position=5, target_is_self=False).ok
+    assert not perm.validate_member_action(ctx, "mute_members", target_top_position=6, target_is_self=False).ok
+
+
+def test_member_action_lower_target_allowed():
+    ctx = mk_ctx(requester_perms=discord.Permissions(mute_members=True), requester_top=5)
+    assert perm.validate_member_action(ctx, "mute_members", target_top_position=2, target_is_self=False).ok
+
+
+def test_member_action_self_allowed_unlike_punitive():
+    # You can move/mute yourself in voice; punitive refuses self.
+    ctx = mk_ctx(requester_perms=discord.Permissions(move_members=True), requester_top=5)
+    assert perm.validate_member_action(ctx, "move_members", target_top_position=5, target_is_self=True).ok
+    assert not perm.validate_punitive(ctx, "move_members", target_top_position=5, target_is_self=True).ok
+
+
+def test_member_action_owner_bypass():
+    ctx = mk_ctx(is_owner=True, requester_perms=discord.Permissions.none(), requester_top=0)
+    assert perm.validate_member_action(ctx, "moderate_members", target_top_position=9, target_is_self=False).ok
+
+
 if __name__ == "__main__":
     raise SystemExit(pytest.main([__file__, "-v"]))
