@@ -1,5 +1,7 @@
 discord.py>=2.6,<3
 anthropic>=0.45
+# web control hub (also a discord.py dependency, pinned here because we import it)
+aiohttp>=3.9
 python-dotenv>=1.0
 textual>=0.80
 rich>=13

@@ -1,0 +1,106 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>AI Moderator — Control Hub</title>
+<link rel="stylesheet" href="/static/style.css">
+<script src="/static/app.js" defer></script>
+</head>
+<body>
+<header>
+  <div id="banner">🛡&nbsp; A I &nbsp;M O D E R A T O R &nbsp;·&nbsp; C O N T R O L &nbsp;H U B</div>
+  <nav>
+    <button class="tab active" data-tab="dashboard">⬤ Dashboard</button>
+    <button class="tab" data-tab="configure">⚙ Configure</button>
+    <button class="tab" data-tab="maintenance">⛭ Maintenance</button>
+    <span class="spacer"></span>
+    <span id="conn-lost" class="warn" hidden>⚠ connection lost</span>
+    <button id="btn-logout" class="ghost">Log out</button>
+  </nav>
+</header>
+<div id="notice" class="notice"></div>
+
+<main>
+  <section id="pane-dashboard" class="pane active">
+    <div class="dash">
+      <aside class="panel" id="status-panel">
+        <h2>Overview</h2>
+        <dl>
+          <dt>State</dt><dd id="state" class="state">—</dd>
+          <dt>Link</dt><dd id="link">—</dd>
+          <dt>User</dt><dd id="user">—</dd>
+          <dt>Guilds</dt><dd id="guild-count">0</dd>
+        </dl>
+        <h3>Config</h3>
+        <pre id="cfg-summary"></pre>
+        <h3>Servers</h3>
+        <pre id="guilds"></pre>
+        <div id="warn" class="warn"></div>
+        <div id="bot-error" class="error"></div>
+      </aside>
+      <div class="dash-main">
+        <div class="controls">
+          <button id="btn-start" class="success">▶ Start</button>
+          <button id="btn-stop" class="danger">■ Stop</button>
+          <button id="btn-restart" class="warning">↻ Restart</button>
+          <button id="btn-clear" class="ghost">Clear feed</button>
+        </div>
+        <div id="feed" class="log panel"></div>
+      </div>
+    </div>
+  </section>
+
+  <section id="pane-configure" class="pane">
+    <div class="panel form-section">
+      <h2>Secrets</h2>
+      <label>Discord token
+        <input type="password" id="cfg-discord_token" autocomplete="off">
+      </label>
+      <label>Anthropic API key
+        <input type="password" id="cfg-anthropic_api_key" autocomplete="off">
+      </label>
+    </div>
+    <div class="panel form-section">
+      <h2>Model</h2>
+      <label>Model (claude-sonnet-5 / claude-haiku-4-5-20251001)
+        <input id="cfg-anthropic_model">
+      </label>
+      <label>Max tokens <input id="cfg-max_tokens" inputmode="numeric"></label>
+      <label>Max agent iterations <input id="cfg-max_agent_iterations" inputmode="numeric"></label>
+    </div>
+    <div class="panel form-section">
+      <h2>Limits &amp; safety</h2>
+      <label>Rate limit: max writes <input id="cfg-rate_limit_max" inputmode="numeric"></label>
+      <label>Rate limit: window (s) <input id="cfg-rate_limit_window" inputmode="numeric"></label>
+      <label>Bulk-confirm threshold <input id="cfg-bulk_confirm_threshold" inputmode="numeric"></label>
+      <label class="check"><input type="checkbox" id="cfg-enable_punitive"> Punitive tools (ban/kick/timeout)</label>
+    </div>
+    <div class="panel form-section">
+      <h2>Auto-update</h2>
+      <label class="check"><input type="checkbox" id="cfg-auto_update"> Auto-update from GitHub</label>
+      <label>Update check interval (min) <input id="cfg-auto_update_interval" inputmode="numeric"></label>
+      <label class="check"><input type="checkbox" id="cfg-auto_restart"> Auto-restart after update</label>
+    </div>
+    <div class="controls">
+      <button id="btn-save" class="primary">💾 Save to .env</button>
+      <button id="btn-save-restart" class="warning">↻ Save &amp; restart bot</button>
+    </div>
+  </section>
+
+  <section id="pane-maintenance" class="pane">
+    <div class="controls">
+      <button id="btn-install" class="primary">⤓ Install deps</button>
+      <button id="btn-reinstall" class="warning">♻ Reinstall deps</button>
+      <button id="btn-check">🔍 Check for updates</button>
+      <button id="btn-update" class="success">⬆ Update &amp; restart</button>
+    </div>
+    <div class="panel" id="git-panel">
+      <h2>Repository</h2>
+      <div id="git-line">—</div>
+    </div>
+    <div id="maint-log" class="log panel"></div>
+  </section>
+</main>
+</body>
+</html>

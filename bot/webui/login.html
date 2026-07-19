@@ -1,0 +1,20 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>AI Moderator — Sign in</title>
+<link rel="stylesheet" href="/static/style.css">
+<script src="/static/login.js" defer></script>
+</head>
+<body class="login-body">
+<form method="post" action="/login" class="login panel" autocomplete="off">
+  <h1>🛡 AI Moderator</h1>
+  <p class="muted">Control hub sign-in</p>
+  <div id="login-error" class="error"></div>
+  <input type="password" name="password" placeholder="Admin password"
+         autofocus required autocomplete="current-password">
+  <button type="submit" class="primary">Sign in</button>
+</form>
+</body>
+</html>
