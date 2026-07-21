@@ -39,8 +39,11 @@ DISPATCH = {
     "get_my_permissions": tools.get_my_permissions,
     "list_bans": tools.list_bans,
     "read_audit_log": tools.read_audit_log,
+    "list_warnings": tools.list_warnings,
     # writes
     "create_role": tools.create_role,
+    "add_warning": tools.add_warning,
+    "clear_warnings": tools.clear_warnings,
     "assign_role": tools.assign_role,
     "change_nickname": tools.change_nickname,
     "create_channel": tools.create_channel,
@@ -77,7 +80,7 @@ DISPATCH = {
 
 READ_ONLY_TOOLS = {
     "get_member_info", "list_roles", "list_channels", "get_my_permissions",
-    "list_bans", "read_audit_log",
+    "list_bans", "read_audit_log", "list_warnings",
 }
 PUNITIVE_TOOLS = {"kick_member", "ban_member", "timeout_member"}
 # Destructive-but-not-punitive writes: they run their OWN typed CONFIRM in the
@@ -109,6 +112,36 @@ def tool_schemas(enable_punitive: bool) -> list[dict[str, Any]]:
             "input_schema": {
                 "type": "object",
                 "properties": {"member": {"type": "string", "description": "Member name, mention, or ID."}},
+            },
+        },
+        {
+            "name": "list_warnings",
+            "description": "List a member's persistent warning history. Requires Moderate Members and hierarchy access.",
+            "input_schema": {
+                "type": "object",
+                "properties": {"member": {"type": "string", "description": "Member name, mention, or ID."}},
+                "required": ["member"],
+            },
+        },
+        {
+            "name": "add_warning",
+            "description": "Record and audit a persistent warning for a member and DM them when possible. Requires Moderate Members and hierarchy access.",
+            "input_schema": {
+                "type": "object",
+                "properties": {
+                    "member": {"type": "string", "description": "Member name, mention, or ID."},
+                    "reason": {"type": "string", "description": "Clear reason for the warning."},
+                },
+                "required": ["member", "reason"],
+            },
+        },
+        {
+            "name": "clear_warnings",
+            "description": "Clear every persistent warning for a member. Requires Manage Messages and hierarchy access.",
+            "input_schema": {
+                "type": "object",
+                "properties": {"member": {"type": "string", "description": "Member name, mention, or ID."}},
+                "required": ["member"],
             },
         },
         {

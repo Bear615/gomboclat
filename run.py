@@ -45,9 +45,13 @@ def run_headless(config: Config) -> None:
 def main() -> None:
     parser = argparse.ArgumentParser(description="AI-Moderator Discord bot")
     parser.add_argument("--headless", action="store_true", help="Run without the TUI dashboard.")
+    parser.add_argument("--web", action="store_true", help="Run the browser control hub on localhost:8765.")
     args = parser.parse_args()
 
-    if args.headless:
+    if args.web:
+        from bot.web import run_web
+        run_web()
+    elif args.headless:
         run_headless(Config.load())
     else:
         # The TUI hub self-manages config, components, and the bot lifecycle, and
