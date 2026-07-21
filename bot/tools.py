@@ -23,6 +23,7 @@ from . import permissions as perm
 from .audit import AuditLogger
 from .colours import ColourError, resolve_colour
 from .config import Config, GuildSettings
+from .moderation import WarningStore
 from .ratelimit import RateLimiter
 
 # Type of the confirmation callback injected by the message layer.
@@ -71,6 +72,7 @@ class ToolContext:
     settings: GuildSettings
     raw_message: str
     confirm: ConfirmFn
+    warning_store: WarningStore
     log_channel: discord.abc.Messageable | None = None
     # Conversational context (see bot/main.py). Both are UNTRUSTED data.
     recent_messages: list[RecalledMessage] = field(default_factory=list)
@@ -345,6 +347,74 @@ async def _executed(ctx: ToolContext, action: str, args: dict[str, Any], decisio
         allowed=True, outcome=outcome, log_channel=ctx.log_channel,
     )
     return outcome
+
+
+def _validate_warning_target(ctx: ToolContext, target: discord.Member, required: str) -> perm.Decision:
+    """Validate a native warning operation against live requester facts."""
+    request = ctx.request_context()
+    capability = perm.check_requester_capability(request, required)
+    if not capability:
+        return capability
+    return perm.check_target(request, target.top_role.position, target.id == ctx.requester.id)
+
+
+async def add_warning(ctx: ToolContext, member: str, reason: str) -> str:
+    """Record a warning through the AI using the same store as ``/warn``."""
+    args = {"member": member, "reason": reason}
+    cooldown = await _rate_limited(ctx, "add_warning", args)
+    if cooldown:
+        return cooldown
+    try:
+        target = resolve_member(ctx.guild, member)
+    except ValueError as exc:
+        return await _refuse(ctx, "add_warning", args, perm.refuse("resolve", str(exc)))
+    decision = _validate_warning_target(ctx, target, "moderate_members")
+    if not decision:
+        return await _refuse(ctx, "add_warning", args, decision)
+    cleaned_reason = reason.strip()[:500]
+    if not cleaned_reason:
+        return await _refuse(ctx, "add_warning", args, perm.refuse("reason", "A warning needs a reason."))
+    case = ctx.warning_store.add(ctx.guild.id, target.id, ctx.requester.id, str(ctx.requester), cleaned_reason)
+    try:
+        await target.send(f"You received warning #{case.id} in **{ctx.guild.name}**: {cleaned_reason}")
+    except (discord.Forbidden, discord.HTTPException):
+        pass
+    return await _executed(ctx, "add_warning", {"member_id": target.id, "reason": cleaned_reason, "case_id": case.id}, decision,
+                           f"Warning #{case.id} recorded for **{target.display_name}**.")
+
+
+async def list_warnings(ctx: ToolContext, member: str) -> str:
+    """Read a member's warning cases after checking moderator access."""
+    args = {"member": member}
+    try:
+        target = resolve_member(ctx.guild, member)
+    except ValueError as exc:
+        return await _refuse(ctx, "list_warnings", args, perm.refuse("resolve", str(exc)))
+    decision = _validate_warning_target(ctx, target, "moderate_members")
+    if not decision:
+        return await _refuse(ctx, "list_warnings", args, decision)
+    cases = ctx.warning_store.list_for(ctx.guild.id, target.id)
+    if not cases:
+        return f"No warnings are recorded for **{target.display_name}**."
+    return "\n".join(f"#{case.id} · {case.created_at[:10]} · {case.moderator_name}: {case.reason}" for case in cases)
+
+
+async def clear_warnings(ctx: ToolContext, member: str) -> str:
+    """Clear a member's cases through the AI, with rate-limit and permission checks."""
+    args = {"member": member}
+    cooldown = await _rate_limited(ctx, "clear_warnings", args)
+    if cooldown:
+        return cooldown
+    try:
+        target = resolve_member(ctx.guild, member)
+    except ValueError as exc:
+        return await _refuse(ctx, "clear_warnings", args, perm.refuse("resolve", str(exc)))
+    decision = _validate_warning_target(ctx, target, "manage_messages")
+    if not decision:
+        return await _refuse(ctx, "clear_warnings", args, decision)
+    count = ctx.warning_store.clear(ctx.guild.id, target.id)
+    return await _executed(ctx, "clear_warnings", {"member_id": target.id}, decision,
+                           f"Cleared {count} warning(s) for **{target.display_name}**.")
 
 
 async def create_role(

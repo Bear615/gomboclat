@@ -144,6 +144,34 @@ class AuditLogger:
             )
         return out
 
+    def search(self, *, guild_id: int | None = None, query: str = "", limit: int = 25) -> list[AuditRecord]:
+        """Search recent cases without interpolating user input into SQL."""
+        clauses, params = [], []
+        if guild_id is not None:
+            clauses.append("guild_id = ?")
+            params.append(guild_id)
+        if query.strip():
+            clauses.append("(action LIKE ? OR requester_name LIKE ? OR outcome LIKE ?)")
+            needle = f"%{query.strip()}%"
+            params.extend([needle, needle, needle])
+        where = " WHERE " + " AND ".join(clauses) if clauses else ""
+        params.append(max(1, min(limit, 100)))
+        with self._lock:
+            rows = self._conn.execute(
+                f"SELECT * FROM audit_log{where} ORDER BY id DESC LIMIT ?", params
+            ).fetchall()
+        return [self._record_from_row(row) for row in rows]
+
+    @staticmethod
+    def _record_from_row(r: sqlite3.Row) -> AuditRecord:
+        return AuditRecord(
+            timestamp=r["timestamp"], guild_id=r["guild_id"], guild_name=r["guild_name"],
+            requester_id=r["requester_id"], requester_name=r["requester_name"],
+            raw_message=r["raw_message"], action=r["action"],
+            arguments=json.loads(r["arguments"] or "{}"), validation=r["validation"],
+            allowed=bool(r["allowed"]), outcome=r["outcome"],
+        )
+
     # --- the main entry point --------------------------------------------- #
 
     async def log(

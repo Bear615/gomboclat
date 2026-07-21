@@ -39,6 +39,7 @@ Other modes:
 
 ```bash
 ./setup.sh --headless       # run without the TUI (plain console logging)
+./setup.sh --web            # browser control hub at http://127.0.0.1:8765
 ./setup.sh --test           # run the unit tests
 ```
 
@@ -177,6 +178,32 @@ Roles are server-wide, so this is always two steps, which the bot performs:
 2. Add a permission overwrite on the target channel granting that role
    `view_channel` — and, if the access is meant to be exclusive, deny
    `view_channel` for `@everyone` on that channel.
+
+### Native moderator workflows
+
+Three workflows have deterministic native commands, and warning management is
+also available to the conversational bot through permission-checked AI tools:
+
+- **Persistent warnings:** `/warn`, `/warnings`, and `/clearwarnings` maintain a
+  server-scoped case history, enforce moderator permissions and role hierarchy,
+  DM the member when possible, and write the action to the audit trail. Mentioning
+  the bot with requests such as “warn Alex for repeated spam” uses the same store,
+  permission checks, rate limits, and audit path.
+- **Channel lockdown:** `/lockdown enabled:true` immediately prevents `@everyone`
+  from sending in the current text channel; `enabled:false` removes that override.
+  It requires Manage Channels and is fully audited.
+- **Audit inspection:** `/auditsearch [query]` searches the latest actions by
+  action, requester, or outcome from inside Discord. It requires View Audit Log.
+
+## Browser control hub
+
+`./setup.sh --web` launches a rebuilt, responsive control center on
+`http://127.0.0.1:8765`. It deliberately binds to localhost. The Overview page
+provides live lifecycle controls, connection and guild state, safety metrics,
+the audit stream, and runtime messages. Configuration covers every setting in
+the TUI (with write-only secret inputs), while Maintenance supports dependency
+installation, update checks, and update/restart. The page polls the local API so
+bot state and audit activity update without a reload.
 
 ---
 
