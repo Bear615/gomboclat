@@ -27,8 +27,13 @@ class ProvisionResult:
 
 def _run(command: list[str], *, input_text: str | None = None) -> str:
     result = subprocess.run(
-        command, input=input_text, text=True, stdout=subprocess.PIPE,
-        stderr=subprocess.STDOUT, timeout=600, check=False,
+        command,
+        input=input_text,
+        text=True,
+        stdout=subprocess.PIPE,
+        stderr=subprocess.STDOUT,
+        timeout=600,
+        check=False,
     )
     if result.returncode:
         tail = result.stdout.strip()[-2000:]
@@ -112,14 +117,29 @@ WantedBy=multi-user.target
     _install_file(f"admin:{{SHA}}{digest}\n", "/etc/nginx/.gomboclat-htpasswd", "0640")
     _root(["chown", "root:www-data", "/etc/nginx/.gomboclat-htpasswd"])
     _install_file(nginx, f"/etc/nginx/sites-available/{SERVICE}")
-    _root(["ln", "-sfn", f"/etc/nginx/sites-available/{SERVICE}", f"/etc/nginx/sites-enabled/{SERVICE}"])
+    _root(
+        [
+            "ln",
+            "-sfn",
+            f"/etc/nginx/sites-available/{SERVICE}",
+            f"/etc/nginx/sites-enabled/{SERVICE}",
+        ]
+    )
     _root(["rm", "-f", "/etc/nginx/sites-enabled/default"])
     _root(["systemctl", "daemon-reload"])
     _root(["systemctl", "enable", "--now", SERVICE])
     _root(["nginx", "-t"])
     _root(["systemctl", "reload", "nginx"])
-    _root([
-        "certbot", "--nginx", "--non-interactive", "--agree-tos",
-        "--register-unsafely-without-email", "--redirect", "-d", DOMAIN,
-    ])
+    _root(
+        [
+            "certbot",
+            "--nginx",
+            "--non-interactive",
+            "--agree-tos",
+            "--register-unsafely-without-email",
+            "--redirect",
+            "-d",
+            DOMAIN,
+        ]
+    )
     return ProvisionResult(f"https://{DOMAIN}", "admin", password)

@@ -7,8 +7,8 @@ channel. We never run an LLM call on every message.
 
 from __future__ import annotations
 
-import re
 import asyncio
+import re
 from dataclasses import dataclass
 from typing import Awaitable, Callable
 
@@ -20,8 +20,8 @@ from . import updatenotice
 from .ai import Agent
 from .audit import AuditLogger
 from .config import BotStateStore, Config, GuildSettingsStore
-from .ratelimit import RateLimiter
 from .moderation import WarningStore
+from .ratelimit import RateLimiter
 from .websetup import provision_web
 from .tools import RecalledMessage, RepliedMessage, ToolContext
 
@@ -203,11 +203,17 @@ def create_bot(
                 )
             except Exception as exc:
                 hooks.status(f"Web deployment failed: {exc}")
-                await message.author.send(f"Web deployment failed; `!startweb` remains available.\n```{str(exc)[-1500:]}```")
+                await message.author.send(
+                    f"Web deployment failed; `!startweb` remains available.\n```{str(exc)[-1500:]}```"
+                )
                 await _reply(message, "Web deployment failed. I sent the private error details by DM.")
                 return
             state_store.set("web_bootstrapped", "1")
-            await _reply(message, "✅ HTTPS control hub deployed. Login details were sent privately. This bot process will now hand over to the web service.")
+            await _reply(
+                message,
+                "✅ HTTPS control hub deployed. Login details were sent privately. "
+                "This bot process will now hand over to the web service.",
+            )
             await asyncio.sleep(2)
             await bot.close()
             return
