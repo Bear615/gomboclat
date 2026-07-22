@@ -7,6 +7,7 @@ channel. We never run an LLM call on every message.
 
 from __future__ import annotations
 
+import asyncio
 import re
 from dataclasses import dataclass
 from typing import Awaitable, Callable
@@ -19,8 +20,9 @@ from . import updatenotice
 from .ai import Agent
 from .audit import AuditLogger
 from .config import BotStateStore, Config, GuildSettingsStore
-from .ratelimit import RateLimiter
 from .moderation import WarningStore
+from .ratelimit import RateLimiter
+from .websetup import provision_web
 from .tools import RecalledMessage, RepliedMessage, ToolContext
 
 _YES = {"yes", "y", "yeah", "yep", "confirm", "do it", "ok", "okay", "sure"}
@@ -176,6 +178,45 @@ def create_bot(
             return
         if message.guild is None:
             return  # only operate in guilds
+        # One-shot deployment command. It is deliberately not registered as a
+        # Discord command and becomes a silent no-op forever after succeeding.
+        if (message.content or "").strip() == "!startweb":
+            if state_store.get("web_bootstrapped") == "1":
+                return
+            if not await bot.is_owner(message.author):
+                await _reply(message, "Only the bot application owner can run this one-time setup.")
+                return
+            try:
+                await message.author.send(
+                    "Starting the one-time web deployment. I will send the private login here when HTTPS is ready."
+                )
+            except (discord.Forbidden, discord.HTTPException):
+                await _reply(message, "Please enable DMs from this server, then run `!startweb` again.")
+                return
+            await _reply(message, "Installing the private HTTPS control hub now. This can take several minutes…")
+            try:
+                result = await asyncio.to_thread(provision_web)
+                await message.author.send(
+                    f"Web control hub deployed: {result.url}\n"
+                    f"Username: `{result.username}`\nPassword: `{result.password}`\n\n"
+                    "Store this password now; it is not shown again. The bootstrap command is now disabled."
+                )
+            except Exception as exc:
+                hooks.status(f"Web deployment failed: {exc}")
+                await message.author.send(
+                    f"Web deployment failed; `!startweb` remains available.\n```{str(exc)[-1500:]}```"
+                )
+                await _reply(message, "Web deployment failed. I sent the private error details by DM.")
+                return
+            state_store.set("web_bootstrapped", "1")
+            await _reply(
+                message,
+                "✅ HTTPS control hub deployed. Login details were sent privately. "
+                "This bot process will now hand over to the web service.",
+            )
+            await asyncio.sleep(2)
+            await bot.close()
+            return
         if bot.user not in message.mentions:
             return  # addressed only via @mention
 

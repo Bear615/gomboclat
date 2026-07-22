@@ -205,6 +205,21 @@ the TUI (with write-only secret inputs), while Maintenance supports dependency
 installation, update checks, and update/restart. The page polls the local API so
 bot state and audit activity update without a reload.
 
+### One-time public HTTPS deployment
+
+The bot application owner can send the exact, non-slash message `!startweb` in a
+server. The bot privately verifies that DMs work, then installs and configures a
+systemd web service, NGINX reverse proxy, HTTP Basic Authentication, and a
+Let's Encrypt certificate for `dcgsl.duckdns.org`. Credentials are sent only by
+DM. After a successful deployment the command is permanently disabled in the
+SQLite bot state and the original process exits so the systemd-managed web hub
+can take over.
+
+Before running it, point the DuckDNS hostname at the server, allow inbound TCP
+ports 80 and 443, and run the bot as root or give its OS user passwordless sudo.
+Interactive sudo is intentionally rejected. If setup fails, the private error is
+DM'd and `!startweb` remains available for a retry.
+
 ---
 
 ## The permission model (enforced in `bot/permissions.py`)
