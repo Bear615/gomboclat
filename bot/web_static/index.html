@@ -4,68 +4,371 @@
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <meta name="color-scheme" content="dark">
-  <title>Gomboclat Control Hub</title>
-  <link rel="stylesheet" href="/static/style.css">
+  <meta name="theme-color" content="#090b0f">
+  <title>Gomboclat — Control Hub</title>
+  <link rel="stylesheet" href="/static/style.css?v=3">
+  <script src="/static/app.js?v=3" defer></script>
 </head>
 <body>
-  <aside class="sidebar">
-    <a class="brand" href="#overview" aria-label="Gomboclat home"><span class="brand-mark">G</span><span>GOMBOCLAT<small>MODERATOR OPS</small></span></a>
-    <nav aria-label="Dashboard sections">
-      <button class="active" data-page="dashboard"><span>⌁</span><em>Overview</em></button>
-      <button data-page="configure"><span>⌘</span><em>Configuration</em></button>
-      <button data-page="maintenance"><span>↻</span><em>Maintenance</em></button>
-    </nav>
-    <div class="sidebar-status"><i id="sideDot"></i><div><small>BOT STATUS</small><strong id="sideState">Stopped</strong></div></div>
-  </aside>
+  <div class="app-shell">
+    <aside class="sidebar">
+      <a class="brand" href="#dashboard" aria-label="Open dashboard">
+        <span class="brand-mark">G</span>
+        <span class="brand-copy">
+          <strong>Gomboclat</strong>
+          <small>moderator control</small>
+        </span>
+      </a>
 
-  <main>
-    <header class="topbar">
-      <div><small>CONTROL HUB <b>/</b> <span id="crumb">OVERVIEW</span></small><h1 id="title">Command the calm.</h1></div>
-      <div class="top-actions"><span class="local-pill">● LOCALHOST ONLY</span><span id="clock">--:-- UTC</span></div>
-    </header>
+      <nav class="primary-nav" aria-label="Control hub sections">
+        <button type="button" class="nav-item active" data-page="dashboard">
+          <span class="nav-index">01</span>
+          <span>Overview</span>
+        </button>
+        <button type="button" class="nav-item" data-page="configure">
+          <span class="nav-index">02</span>
+          <span>Configuration</span>
+        </button>
+        <button type="button" class="nav-item" data-page="maintenance">
+          <span class="nav-index">03</span>
+          <span>Maintenance</span>
+        </button>
+      </nav>
 
-    <section id="dashboard" class="page active">
-      <div id="setupBanner" class="setup-banner hidden"><div><strong>Finish one-time setup</strong><p>Add the missing credentials, save, and the hub can start your bot.</p></div><button data-go="configure">Configure now →</button></div>
-      <div class="hero">
-        <div><span class="eyebrow">SYSTEM HEALTH</span><h2><i id="heroDot"></i><span id="heroState">Bot stopped</span></h2><p id="identity">Waiting for a Discord connection.</p></div>
-        <div class="actions"><button data-bot="start" class="primary">▶ Start bot</button><button data-bot="restart">↻ Restart</button><button data-bot="stop" class="danger">■ Stop</button></div>
+      <div class="sidebar-foot">
+        <div class="connection-summary">
+          <span class="status-light" id="sideDot"></span>
+          <span>
+            <small>Bot state</small>
+            <strong id="sideState">Loading</strong>
+          </span>
+        </div>
+        <p>Keys <kbd>1</kbd> <kbd>2</kbd> <kbd>3</kbd> switch views</p>
       </div>
-      <div class="stats">
-        <article><small>CONNECTED SERVERS</small><strong id="guildCount">0</strong><span id="guildNames">No guilds connected</span></article>
-        <article><small>ACTIVE MODEL</small><strong id="model">—</strong><span id="endpoint">OpenAI compatible</span></article>
-        <article><small>RATE LIMIT</small><strong id="rate">—</strong><span>write actions per user</span></article>
-        <article><small>SAFETY MODE</small><strong id="safety">—</strong><span>typed confirmation guard</span></article>
-      </div>
-      <div class="dashboard-grid">
-        <article class="panel audit-panel"><div class="panel-head"><div><small>AUDIT STREAM</small><h3>Recent moderation activity</h3></div><span class="pulse">● LIVE</span></div><div id="audit" class="scroll-region"></div></article>
-        <article class="panel console-panel"><div class="panel-head"><div><small>RUNTIME</small><h3>System log</h3></div><button id="clearActivity" class="text-button">Clear</button></div><div id="activity" class="scroll-region console-lines"></div></article>
-      </div>
-    </section>
+    </aside>
 
-    <section id="configure" class="page">
-      <div class="pagehead"><div><span class="eyebrow">ENVIRONMENT</span><h2>Configuration</h2><p>Every control from the terminal dashboard, stored locally in <code>.env</code>.</p></div><button class="primary" data-save="false">Save changes</button></div>
-      <form id="configForm">
-        <fieldset><legend><span>01</span> Connection secrets</legend><p>Secrets are write-only. Leave a field empty to preserve its saved value.</p><label>Discord bot token<input autocomplete="off" type="password" name="discord_token" placeholder="Leave blank to keep saved token"></label><label>Provider API key<input autocomplete="off" type="password" name="api_key" placeholder="Leave blank to keep saved key"></label></fieldset>
-        <fieldset><legend><span>02</span> Intelligence provider</legend><p>Any OpenAI-compatible chat completions endpoint is supported.</p><label>API base URL<input type="url" name="api_base_url" required></label><div class="field-row"><label>Model<input name="model" required></label><label>Max tokens<input type="number" min="1" name="max_tokens" required></label></div><label>Maximum agent iterations<input type="number" min="1" name="max_agent_iterations" required></label></fieldset>
-        <fieldset><legend><span>03</span> Safety & limits</legend><p>Deterministic permission checks remain enforced regardless of these values.</p><div class="field-row"><label>Max writes<input type="number" min="1" name="rate_limit_max" required></label><label>Window (seconds)<input type="number" min="1" name="rate_limit_window" required></label></div><label>Bulk confirmation threshold<input type="number" min="1" name="bulk_confirm_threshold" required></label><label class="toggle"><span><strong>Enable punitive tools</strong><small>Ban, kick, and timeout still require typed confirmation.</small></span><input type="checkbox" name="enable_punitive" role="switch"></label></fieldset>
-        <fieldset><legend><span>04</span> Automatic updates</legend><p>Periodically fast-forward from the configured Git upstream.</p><label class="toggle"><span><strong>Automatic updates</strong><small>Check upstream and install new dependencies.</small></span><input type="checkbox" name="auto_update" role="switch"></label><label>Check interval (minutes)<input type="number" min="1" name="auto_update_interval" required></label><label class="toggle"><span><strong>Restart after update</strong><small>Apply pulled changes to an active bot immediately.</small></span><input type="checkbox" name="auto_restart" role="switch"></label></fieldset>
-      </form>
-      <div class="savebar"><span id="saveHint">Changes require a restart to affect a running bot.</span><div><button data-save="false">Save to .env</button><button class="primary" data-save="true">Save & restart</button></div></div>
-    </section>
+    <div class="workspace">
+      <header class="topbar">
+        <div class="page-context">
+          <span class="mobile-mark">G</span>
+          <span>
+            <small>CONTROL HUB <b>/</b> <span id="crumb">OVERVIEW</span></small>
+            <strong id="pageTitle">System overview</strong>
+          </span>
+        </div>
+        <div class="top-actions">
+          <span class="stream-state" id="streamState"><i></i> Connecting</span>
+          <span class="clock" id="clock">--:--:--</span>
+        </div>
+      </header>
 
-    <section id="maintenance" class="page">
-      <div class="pagehead"><div><span class="eyebrow">OPERATIONS</span><h2>Maintenance</h2><p>Manage the active Python environment and upstream deployment.</p></div><div id="repoBadge" class="repo-badge">Repository · loading</div></div>
-      <div class="repo-strip"><div><small>BRANCH</small><strong id="repoBranch">—</strong></div><div><small>LOCAL COMMIT</small><strong id="repoCommit">—</strong></div><div><small>UPSTREAM</small><strong id="repoState">Not checked</strong></div></div>
-      <div class="maint-grid">
-        <button data-maint="install"><b>↓</b><span><strong>Install dependencies</strong><small>Upgrade packages from requirements.txt</small></span></button>
-        <button data-maint="reinstall"><b>↯</b><span><strong>Force reinstall</strong><small>Fresh install without the package cache</small></span></button>
-        <button data-maint="check"><b>⌕</b><span><strong>Check upstream</strong><small>Fetch and compare the tracked branch</small></span></button>
-        <button data-maint="update"><b>↻</b><span><strong>Update & restart</strong><small>Fast-forward, install, and relaunch the bot</small></span></button>
-      </div>
-      <article class="panel output"><div class="panel-head"><div><small>TERMINAL</small><h3>Operation output</h3></div><span id="maintState">IDLE</span></div><pre id="maintOutput">Select an operation to begin.</pre></article>
-    </section>
-  </main>
+      <main>
+        <section id="dashboard" class="page active" aria-labelledby="dashboardHeading">
+          <div id="setupBanner" class="notice-banner warning hidden">
+            <div>
+              <span class="notice-label">SETUP REQUIRED</span>
+              <strong>Credentials are missing</strong>
+              <p id="setupText">Add the missing values before starting the bot.</p>
+            </div>
+            <button type="button" class="button subtle" data-go="configure">Open configuration</button>
+          </div>
+
+          <div id="runtimeError" class="notice-banner danger hidden">
+            <div>
+              <span class="notice-label">RUNTIME ERROR</span>
+              <strong>The bot needs attention</strong>
+              <p id="runtimeErrorText"></p>
+            </div>
+          </div>
+
+          <article class="hero-card">
+            <div class="hero-copy">
+              <span class="eyebrow">LIVE CONTROL</span>
+              <h1 id="dashboardHeading"><span class="status-light large" id="heroDot"></span><span id="heroState">Loading state</span></h1>
+              <p id="identity">Reading the local control service…</p>
+            </div>
+            <div class="lifecycle-actions" aria-label="Bot lifecycle controls">
+              <button type="button" class="button primary" data-bot="start">Start bot</button>
+              <button type="button" class="button" data-bot="restart">Restart</button>
+              <button type="button" class="button danger" data-bot="stop">Stop</button>
+            </div>
+          </article>
+
+          <div class="metric-grid">
+            <article class="metric-card">
+              <small>DISCORD ACCOUNT</small>
+              <strong id="account">Offline</strong>
+              <span id="connectionText">Not connected</span>
+            </article>
+            <article class="metric-card">
+              <small>CONNECTED SERVERS</small>
+              <strong id="guildCount">0</strong>
+              <span id="guildNames">No servers connected</span>
+            </article>
+            <article class="metric-card">
+              <small>ACTIVE MODEL</small>
+              <strong id="model">—</strong>
+              <span id="endpoint">OpenAI-compatible endpoint</span>
+            </article>
+            <article class="metric-card">
+              <small>WRITE RATE LIMIT</small>
+              <strong id="rate">—</strong>
+              <span>per user</span>
+            </article>
+            <article class="metric-card">
+              <small>PUNITIVE TOOLS</small>
+              <strong id="safety">—</strong>
+              <span>typed confirmation remains required</span>
+            </article>
+            <article class="metric-card">
+              <small>AUTOMATIC UPDATES</small>
+              <strong id="updates">—</strong>
+              <span id="updatesDetail">No schedule loaded</span>
+            </article>
+          </div>
+
+          <div class="dashboard-grid">
+            <article class="panel audit-panel">
+              <header class="panel-head">
+                <div>
+                  <small>AUDIT TRAIL</small>
+                  <h2>Moderation decisions</h2>
+                </div>
+                <span class="live-label"><i></i> LIVE</span>
+              </header>
+              <div id="audit" class="scroll-region" aria-live="polite"></div>
+            </article>
+
+            <article class="panel activity-panel">
+              <header class="panel-head">
+                <div>
+                  <small>RUNTIME FEED</small>
+                  <h2>Bot activity</h2>
+                </div>
+                <button type="button" id="clearActivity" class="text-button">Clear</button>
+              </header>
+              <div id="activity" class="scroll-region console-lines" aria-live="polite"></div>
+            </article>
+          </div>
+        </section>
+
+        <section id="configure" class="page" aria-labelledby="configureHeading">
+          <header class="page-heading">
+            <div>
+              <span class="eyebrow">SHARED ENVIRONMENT</span>
+              <h1 id="configureHeading">Configuration</h1>
+              <p>The browser and terminal dashboards read and write the same repository-root <code>.env</code>.</p>
+            </div>
+            <button type="button" class="button primary desktop-save" data-save="false">Save changes</button>
+          </header>
+
+          <div id="externalConfig" class="notice-banner info hidden">
+            <div>
+              <span class="notice-label">EXTERNAL CHANGE</span>
+              <strong>The saved configuration changed elsewhere</strong>
+              <p>The TUI or a manual edit updated <code>.env</code>. Reload before saving to avoid replacing it.</p>
+            </div>
+            <button type="button" class="button subtle" id="reloadConfig">Reload saved values</button>
+          </div>
+
+          <form id="configForm" novalidate>
+            <fieldset class="form-card">
+              <legend><span>01</span> Credentials</legend>
+              <p class="section-copy">Secrets are never sent back to the browser. A blank field keeps the saved value.</p>
+
+              <label class="input-label" for="discordToken">
+                <span>Discord bot token <em class="secret-state" id="discordSecretState">Checking</em></span>
+                <input id="discordToken" autocomplete="new-password" type="password" name="discord_token" placeholder="Leave blank to keep the saved token">
+              </label>
+
+              <label class="input-label" for="apiKey">
+                <span>OpenAI-compatible API key <em class="secret-state" id="apiSecretState">Checking</em></span>
+                <input id="apiKey" autocomplete="new-password" type="password" name="api_key" placeholder="Leave blank to keep the saved key">
+              </label>
+              <p class="field-help">Keyless local servers can use any non-empty placeholder key.</p>
+            </fieldset>
+
+            <fieldset class="form-card">
+              <legend><span>02</span> OpenAI-compatible provider</legend>
+              <p class="section-copy">Use OpenAI itself or any compatible chat-completions server, including OpenRouter, Groq, Together, Ollama, LM Studio, vLLM, and LiteLLM.</p>
+
+              <label class="input-label" for="providerPreset">
+                <span>Endpoint shortcut</span>
+                <select id="providerPreset">
+                  <option value="custom">Custom / keep current</option>
+                  <option value="https://api.openai.com/v1">OpenAI</option>
+                  <option value="https://openrouter.ai/api/v1">OpenRouter</option>
+                  <option value="https://api.groq.com/openai/v1">Groq</option>
+                  <option value="http://127.0.0.1:11434/v1">Ollama (local)</option>
+                  <option value="http://127.0.0.1:1234/v1">LM Studio (local)</option>
+                </select>
+              </label>
+
+              <label class="input-label" for="apiBaseUrl">
+                <span>API base URL</span>
+                <input id="apiBaseUrl" type="url" name="api_base_url" spellcheck="false" placeholder="https://api.openai.com/v1" required>
+              </label>
+
+              <label class="input-label" for="modelName">
+                <span>Model identifier</span>
+                <input id="modelName" name="model" spellcheck="false" placeholder="gpt-4o-mini" required>
+              </label>
+
+              <div class="field-row">
+                <label class="input-label" for="maxTokens">
+                  <span>Maximum tokens</span>
+                  <input id="maxTokens" type="number" min="1" step="1" name="max_tokens" required>
+                </label>
+                <label class="input-label" for="maxIterations">
+                  <span>Agent iterations</span>
+                  <input id="maxIterations" type="number" min="1" step="1" name="max_agent_iterations" required>
+                </label>
+              </div>
+            </fieldset>
+
+            <fieldset class="form-card">
+              <legend><span>03</span> Limits and safety</legend>
+              <p class="section-copy">These tune behavior; deterministic Discord permission checks remain enforced in Python.</p>
+
+              <div class="field-row">
+                <label class="input-label" for="rateLimitMax">
+                  <span>Maximum writes</span>
+                  <input id="rateLimitMax" type="number" min="1" step="1" name="rate_limit_max" required>
+                </label>
+                <label class="input-label" for="rateLimitWindow">
+                  <span>Window in seconds</span>
+                  <input id="rateLimitWindow" type="number" min="1" step="1" name="rate_limit_window" required>
+                </label>
+              </div>
+
+              <label class="input-label" for="bulkThreshold">
+                <span>Bulk-confirmation threshold</span>
+                <input id="bulkThreshold" type="number" min="1" step="1" name="bulk_confirm_threshold" required>
+              </label>
+
+              <label class="toggle-row">
+                <span>
+                  <strong>Enable punitive tools</strong>
+                  <small>Ban, kick, and timeout still require typed confirmation naming the target.</small>
+                </span>
+                <input type="checkbox" name="enable_punitive" role="switch">
+              </label>
+
+              <label class="toggle-row">
+                <span>
+                  <strong>Cache every Discord member</strong>
+                  <small>Improves name-only lookup but can use substantially more memory on large servers.</small>
+                </span>
+                <input type="checkbox" name="cache_members" role="switch">
+              </label>
+            </fieldset>
+
+            <fieldset class="form-card">
+              <legend><span>04</span> Automatic updates</legend>
+              <p class="section-copy">Check the branch tracked by this checkout and pull only fast-forward updates.</p>
+
+              <label class="toggle-row">
+                <span>
+                  <strong>Automatic updates</strong>
+                  <small>Fetch upstream periodically and install changed dependencies.</small>
+                </span>
+                <input type="checkbox" name="auto_update" role="switch">
+              </label>
+
+              <label class="input-label" for="updateInterval">
+                <span>Check interval in minutes</span>
+                <input id="updateInterval" type="number" min="1" step="1" name="auto_update_interval" required>
+              </label>
+
+              <label class="toggle-row">
+                <span>
+                  <strong>Restart after an automatic update</strong>
+                  <small>Rebuild the active Discord client so new configuration and code take effect.</small>
+                </span>
+                <input type="checkbox" name="auto_restart" role="switch">
+              </label>
+            </fieldset>
+          </form>
+
+          <div class="save-dock">
+            <div>
+              <strong id="saveState">Saved values loaded</strong>
+              <span id="saveHint">Changes to a running bot require a restart.</span>
+            </div>
+            <div class="save-actions">
+              <button type="button" class="button" id="resetConfig">Reset form</button>
+              <button type="button" class="button" data-save="false">Save to .env</button>
+              <button type="button" class="button primary" data-save="true">Save and restart</button>
+            </div>
+          </div>
+        </section>
+
+        <section id="maintenance" class="page" aria-labelledby="maintenanceHeading">
+          <header class="page-heading">
+            <div>
+              <span class="eyebrow">REPOSITORY AND RUNTIME</span>
+              <h1 id="maintenanceHeading">Maintenance</h1>
+              <p>Manage Python dependencies, compare the tracked Git branch, and apply updates.</p>
+            </div>
+            <span id="repoBadge" class="repo-badge">Loading repository</span>
+          </header>
+
+          <div class="repo-grid">
+            <article>
+              <small>TRACKED BRANCH</small>
+              <strong id="repoBranch">—</strong>
+            </article>
+            <article>
+              <small>LOCAL COMMIT</small>
+              <strong id="repoCommit">—</strong>
+            </article>
+            <article>
+              <small>UPSTREAM COMMIT</small>
+              <strong id="repoRemote">—</strong>
+            </article>
+            <article>
+              <small>SYNC STATE</small>
+              <strong id="repoState">Not checked</strong>
+            </article>
+          </div>
+
+          <div class="maintenance-actions">
+            <button type="button" data-maint="install">
+              <span class="action-index">01</span>
+              <span><strong>Install dependencies</strong><small>Upgrade packages from requirements.txt</small></span>
+            </button>
+            <button type="button" data-maint="reinstall">
+              <span class="action-index">02</span>
+              <span><strong>Force reinstall</strong><small>Reinstall every package without cache</small></span>
+            </button>
+            <button type="button" data-maint="check">
+              <span class="action-index">03</span>
+              <span><strong>Check upstream</strong><small>Fetch and compare the tracked branch</small></span>
+            </button>
+            <button type="button" data-maint="update">
+              <span class="action-index">04</span>
+              <span><strong>Update and restart</strong><small>Fast-forward, install, and relaunch</small></span>
+            </button>
+          </div>
+
+          <article class="panel output-panel">
+            <header class="panel-head">
+              <div>
+                <small>LIVE OUTPUT</small>
+                <h2 id="maintenanceTitle">Maintenance log</h2>
+              </div>
+              <span id="maintState" class="operation-state">IDLE</span>
+            </header>
+            <div id="maintOutput" class="terminal-output" aria-live="polite">
+              <p class="empty-state">Select an operation to begin.</p>
+            </div>
+          </article>
+        </section>
+      </main>
+    </div>
+  </div>
+
   <div id="toast" role="status" aria-live="polite"></div>
-  <script src="/static/app.js"></script>
+  <noscript>This control hub requires JavaScript.</noscript>
 </body>
 </html>

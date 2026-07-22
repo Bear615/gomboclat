@@ -11,18 +11,23 @@ from __future__ import annotations
 
 import os
 import sqlite3
+import stat
+import tempfile
 import threading
 from dataclasses import dataclass
 from pathlib import Path
 
 from dotenv import load_dotenv
 
-ENV_PATH = Path(".env")
+REPO_ROOT = Path(__file__).resolve().parent.parent
+ENV_PATH = REPO_ROOT / ".env"
+ENV_EXAMPLE_PATH = REPO_ROOT / ".env.example"
+_ENV_WRITE_LOCK = threading.Lock()
 
 
-def reload_env() -> None:
+def reload_env(path: Path = ENV_PATH) -> None:
     """(Re)load .env into the process environment, overriding stale values."""
-    load_dotenv(ENV_PATH, override=True)
+    load_dotenv(path, override=True)
 
 
 reload_env()
@@ -55,26 +60,57 @@ def update_env_file(updates: dict[str, str], path: Path = ENV_PATH) -> None:
     appending new ones. Preserves comments and ordering. Creates the file (from
     .env.example if present) if it doesn't exist yet.
     """
-    if not path.exists():
-        example = Path(".env.example")
-        path.write_text(example.read_text() if example.exists() else "")
+    path = path.resolve()
+    path.parent.mkdir(parents=True, exist_ok=True)
 
-    lines = path.read_text().splitlines()
-    remaining = dict(updates)
+    with _ENV_WRITE_LOCK:
+        if path.exists():
+            original = path.read_text()
+            mode = stat.S_IMODE(path.stat().st_mode)
+        else:
+            example = ENV_EXAMPLE_PATH
+            original = example.read_text() if example.exists() else ""
+            mode = 0o600
 
-    for i, line in enumerate(lines):
-        stripped = line.strip()
-        if not stripped or stripped.startswith("#") or "=" not in stripped:
-            continue
-        key = stripped.split("=", 1)[0].strip()
-        if key in remaining:
-            lines[i] = f"{key}={remaining.pop(key)}"
+        lines = original.splitlines()
+        remaining = dict(updates)
 
-    for key, value in remaining.items():
-        lines.append(f"{key}={value}")
+        for i, line in enumerate(lines):
+            stripped = line.strip()
+            if not stripped or stripped.startswith("#") or "=" not in stripped:
+                continue
+            key = stripped.split("=", 1)[0].strip()
+            if key in remaining:
+                lines[i] = f"{key}={remaining.pop(key)}"
 
-    path.write_text("\n".join(lines) + "\n")
-    reload_env()
+        for key, value in remaining.items():
+            lines.append(f"{key}={value}")
+
+        payload = "\n".join(lines) + "\n"
+        fd, temporary_name = tempfile.mkstemp(
+            prefix=f".{path.name}.", suffix=".tmp", dir=path.parent
+        )
+        temporary = Path(temporary_name)
+        try:
+            with os.fdopen(fd, "w") as handle:
+                handle.write(payload)
+                handle.flush()
+                os.fsync(handle.fileno())
+            os.chmod(temporary, mode)
+            os.replace(temporary, path)
+        finally:
+            temporary.unlink(missing_ok=True)
+
+    reload_env(path)
+
+
+def env_revision(path: Path = ENV_PATH) -> str:
+    """Return a cheap revision marker for detecting edits made by another UI."""
+    try:
+        info = path.stat()
+    except OSError:
+        return "missing"
+    return f"{info.st_mtime_ns}:{info.st_size}"
 
 
 @dataclass
