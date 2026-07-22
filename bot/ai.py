@@ -574,6 +574,10 @@ class Agent:
         )
         self.schemas = openai_tools(config.enable_punitive)
 
+    async def close(self) -> None:
+        """Release the SDK's underlying HTTP connection pool."""
+        await self.client.close()
+
     def _initial_user_turn(self, ctx: ToolContext, text: str) -> str:
         rc = ctx.request_context()
         is_owner = rc.is_owner

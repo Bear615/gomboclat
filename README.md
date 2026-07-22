@@ -60,6 +60,31 @@ exits.
 The script creates a `.venv`, installs everything from `requirements.txt`,
 copies `.env.example` → `.env` on first run, and launches the bot.
 
+### Memory usage and out-of-memory exits
+
+The number of servers alone does not determine memory use. One busy server could
+previously grow the default terminal dashboard without a limit, and a burst of
+mentions could start many simultaneous model requests. The dashboard now retains
+only its latest activity, model-request concurrency is capped, and AI HTTP
+connections are explicitly closed across bot restarts.
+
+The bot defaults to `CACHE_MEMBERS=false`. In this mode discord.py does not
+download and retain every member of every server at startup, which is usually
+the largest source of RAM use. Event authors and explicitly mentioned members
+still work normally; for reliable moderation requests, mention the target or
+use their Discord ID. Name-only lookup can only see members Discord has supplied
+to the current process.
+
+Set `CACHE_MEMBERS=true` only when name-only lookup across the complete member
+list is required and the host has enough memory, then restart the bot. If the OS
+still kills the process, confirm it is really an OOM kill with
+`journalctl -k -g 'Out of memory|Killed process'`, watch the service with
+`systemctl status gomboclat-web` and `ps -o pid,rss,cmd -C python3`, and check
+whether a local model server (Ollama, vLLM, or LM Studio) rather than this bot is
+using the RAM. A remote OpenAI-compatible endpoint keeps model weights off the
+bot host. Adding swap can absorb brief spikes, but is not a substitute for
+enough memory and may make the service much slower.
+
 ### Privileged intents (required)
 
 In the [Discord Developer Portal](https://discord.com/developers/applications) →
