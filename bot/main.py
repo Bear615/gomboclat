@@ -26,11 +26,28 @@ from .websetup import provision_web
 from .tools import RecalledMessage, RepliedMessage, ToolContext
 
 _YES = {"yes", "y", "yeah", "yep", "confirm", "do it", "ok", "okay", "sure"}
+_MAX_CONCURRENT_AI_REQUESTS = 4
 
 # Conversational recall (per-user message memory).
 _RECALL_LIMIT = 5      # how many of the requester's own recent messages to surface
 _RECALL_SCAN = 100     # how far back in channel history to scan for them
 _MAX_RECALL_TEXT = 500  # truncate recalled/replied text to bound context size
+
+
+class ModeratorBot(commands.Bot):
+    """Discord client that also owns the AI client's network resources."""
+
+    def __init__(self, *args, agent: Agent, **kwargs):
+        super().__init__(*args, **kwargs)
+        self._agent = agent
+
+    async def close(self) -> None:
+        # Restarts replace both clients. Close the HTTP pool explicitly rather
+        # than leaving its sockets and buffers for cyclic garbage collection.
+        try:
+            await super().close()
+        finally:
+            await self._agent.close()
 
 
 @dataclass
@@ -124,7 +141,24 @@ def create_bot(
     intents.members = True          # privileged — enable in the Developer Portal
     intents.guilds = True
 
-    bot = commands.Bot(command_prefix="!moderator-unused-prefix ", intents=intents, help_command=None)
+    # discord.py otherwise downloads and retains every member in every guild at
+    # startup.  That is the dominant memory cost for bots in large servers and is
+    # unnecessary for event authors, mentions, and ID-based API lookups.  Full
+    # caching remains an explicit compatibility option for name-only lookups.
+    member_cache = (
+        discord.MemberCacheFlags.from_intents(intents)
+        if config.cache_members
+        else discord.MemberCacheFlags.none()
+    )
+    bot = ModeratorBot(
+        command_prefix="!moderator-unused-prefix ",
+        agent=agent,
+        intents=intents,
+        help_command=None,
+        member_cache_flags=member_cache,
+        chunk_guilds_at_startup=config.cache_members,
+    )
+    ai_slots = asyncio.Semaphore(_MAX_CONCURRENT_AI_REQUESTS)
 
     # Persistent bot state (git version tracking for the update changelog).
     state_store = BotStateStore(config.db_path)
@@ -263,8 +297,15 @@ def create_bot(
             replied_to=replied,
         )
 
+        # Discord creates a task for every message event. Reject excess work
+        # instead of retaining an unlimited burst of agent histories and HTTP
+        # responses in memory -- this can happen in just one busy server.
+        if ai_slots.locked():
+            await _reply(message, "I'm already handling several requests. Please try again shortly.")
+            return
+
         try:
-            async with message.channel.typing():
+            async with ai_slots, message.channel.typing():
                 reply_text, outcomes = await agent.run(ctx, text)
         except Exception as e:
             await _reply(message, f"Something went wrong while handling that: `{e}`")

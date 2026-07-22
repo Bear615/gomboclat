@@ -155,7 +155,9 @@ class ModeratorHub(App):
         self.settings_store = GuildSettingsStore(self.config.db_path)
         self.ratelimiter = RateLimiter(self.config.rate_limit_max, self.config.rate_limit_window)
 
-        self._queue: asyncio.Queue = asyncio.Queue()
+        # Bound the producer side of the live dashboard as well as its widgets.
+        # Otherwise the default launch mode retains activity for process life.
+        self._queue: asyncio.Queue = asyncio.Queue(maxsize=1_000)
         self._loop: asyncio.AbstractEventLoop | None = None
         self._connected = False
         self._user = "—"
@@ -178,7 +180,9 @@ class ModeratorHub(App):
                             yield Button("Start", id="btn-start", variant="success")
                             yield Button("Stop", id="btn-stop", variant="error")
                             yield Button("Restart", id="btn-restart", variant="warning")
-                        yield RichLog(id="feed", markup=True, wrap=True, highlight=False)
+                        yield RichLog(
+                            id="feed", markup=True, wrap=True, highlight=False, max_lines=500
+                        )
             with TabPane("Configure", id="configure"):
                 yield from self._compose_configure()
             with TabPane("Maintenance", id="maintenance"):
@@ -223,7 +227,9 @@ class ModeratorHub(App):
                 yield Button("Check for updates", id="btn-check", variant="default")
                 yield Button("Update & restart", id="btn-update", variant="success")
             yield Static("", id="git-status")
-            yield RichLog(id="maint-log", markup=True, wrap=True, highlight=False)
+            yield RichLog(
+                id="maint-log", markup=True, wrap=True, highlight=False, max_lines=2_000
+            )
 
     def _field(self, label: str, widget) -> ComposeResult:
         yield Horizontal(Label(label, classes="field"), widget, classes="row")
@@ -310,7 +316,15 @@ class ModeratorHub(App):
 
     def _enqueue(self, kind: str, payload) -> None:
         if self._loop is not None:
-            self._loop.call_soon_threadsafe(self._queue.put_nowait, (kind, payload))
+            def put_bounded() -> None:
+                if self._queue.full():
+                    try:
+                        self._queue.get_nowait()
+                    except asyncio.QueueEmpty:
+                        pass
+                self._queue.put_nowait((kind, payload))
+
+            self._loop.call_soon_threadsafe(put_bounded)
 
     def _on_bot_state(self, state: str, error: str) -> None:
         self._enqueue("botstate", (state, error))

@@ -97,6 +97,10 @@ class Config:
     bulk_confirm_threshold: int = 3
     # Enable punitive tools (ban/kick/timeout) -- gated behind typed CONFIRM.
     enable_punitive: bool = True
+    # Keeping Discord's complete member list can consume hundreds of MB on large
+    # guilds.  The low-memory default still receives members attached to events;
+    # operators who rely on resolving arbitrary members by name can opt back in.
+    cache_members: bool = False
     db_path: str = "moderator.db"
     # Auto-update from GitHub.
     auto_update: bool = False
@@ -127,6 +131,7 @@ class Config:
             rate_limit_window=_env_int("RATE_LIMIT_WINDOW", 60),
             bulk_confirm_threshold=_env_int("BULK_CONFIRM_THRESHOLD", 3),
             enable_punitive=_env_bool("ENABLE_PUNITIVE", True),
+            cache_members=_env_bool("CACHE_MEMBERS", False),
             db_path=_env("DB_PATH", "moderator.db"),  # type: ignore[arg-type]
             auto_update=_env_bool("AUTO_UPDATE", False),
             auto_update_interval=_env_int("AUTO_UPDATE_INTERVAL", 30),
