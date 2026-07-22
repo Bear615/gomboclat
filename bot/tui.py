@@ -48,6 +48,7 @@ STATE_STYLE = {
     control.RUNNING: "[b green]● running[/]",
     control.STARTING: "[b yellow]● starting…[/]",
     control.STOPPING: "[b yellow]● stopping…[/]",
+    control.RESTARTING: "[b yellow]● restarting…[/]",
     control.STOPPED: "[dim]○ stopped[/]",
     control.ERROR: "[b red]● error[/]",
 }
@@ -326,7 +327,7 @@ class ModeratorHub(App):
                 self._refresh_status()
             elif kind == "botstate":
                 state, error = payload
-                if state in (control.STOPPED, control.ERROR):
+                if state in (control.STOPPED, control.ERROR, control.RESTARTING):
                     self._connected = False
                 feed.write(f"[dim]{self._ts()} · bot {state}[/]" + (f" [red]{error}[/]" if error else ""))
                 self._refresh_status()
