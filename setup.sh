@@ -67,6 +67,10 @@ case "$MODE" in
     info "Launching bot (headless)"
     exec python run.py --headless
     ;;
+  --web|web)
+    info "Launching web control hub at http://127.0.0.1:8765"
+    exec python run.py --web
+    ;;
   *)
     # The TUI hub opens even before secrets are set — that's what the Configure
     # tab is for — so launch it regardless and just nudge if nothing's set yet.

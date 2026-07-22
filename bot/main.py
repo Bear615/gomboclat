@@ -8,6 +8,7 @@ channel. We never run an LLM call on every message.
 from __future__ import annotations
 
 import re
+import asyncio
 from dataclasses import dataclass
 from typing import Awaitable, Callable
 
@@ -20,6 +21,8 @@ from .ai import Agent
 from .audit import AuditLogger
 from .config import BotStateStore, Config, GuildSettingsStore
 from .ratelimit import RateLimiter
+from .moderation import WarningStore
+from .websetup import provision_web
 from .tools import RecalledMessage, RepliedMessage, ToolContext
 
 _YES = {"yes", "y", "yeah", "yep", "confirm", "do it", "ok", "okay", "sure"}
@@ -125,6 +128,7 @@ def create_bot(
 
     # Persistent bot state (git version tracking for the update changelog).
     state_store = BotStateStore(config.db_path)
+    warning_store = WarningStore(config.db_path)
     update_checked = False  # run the update-notice check once per process
 
     # -- confirmation flow ------------------------------------------------- #
@@ -174,6 +178,39 @@ def create_bot(
             return
         if message.guild is None:
             return  # only operate in guilds
+        # One-shot deployment command. It is deliberately not registered as a
+        # Discord command and becomes a silent no-op forever after succeeding.
+        if (message.content or "").strip() == "!startweb":
+            if state_store.get("web_bootstrapped") == "1":
+                return
+            if not await bot.is_owner(message.author):
+                await _reply(message, "Only the bot application owner can run this one-time setup.")
+                return
+            try:
+                await message.author.send(
+                    "Starting the one-time web deployment. I will send the private login here when HTTPS is ready."
+                )
+            except (discord.Forbidden, discord.HTTPException):
+                await _reply(message, "Please enable DMs from this server, then run `!startweb` again.")
+                return
+            await _reply(message, "Installing the private HTTPS control hub now. This can take several minutes…")
+            try:
+                result = await asyncio.to_thread(provision_web)
+                await message.author.send(
+                    f"Web control hub deployed: {result.url}\n"
+                    f"Username: `{result.username}`\nPassword: `{result.password}`\n\n"
+                    "Store this password now; it is not shown again. The bootstrap command is now disabled."
+                )
+            except Exception as exc:
+                hooks.status(f"Web deployment failed: {exc}")
+                await message.author.send(f"Web deployment failed; `!startweb` remains available.\n```{str(exc)[-1500:]}```")
+                await _reply(message, "Web deployment failed. I sent the private error details by DM.")
+                return
+            state_store.set("web_bootstrapped", "1")
+            await _reply(message, "✅ HTTPS control hub deployed. Login details were sent privately. This bot process will now hand over to the web service.")
+            await asyncio.sleep(2)
+            await bot.close()
+            return
         if bot.user not in message.mentions:
             return  # addressed only via @mention
 
@@ -214,6 +251,7 @@ def create_bot(
             settings=settings,
             raw_message=text,
             confirm=make_confirm(message),
+            warning_store=warning_store,
             log_channel=log_channel,
             recent_messages=recent,
             replied_to=replied,
@@ -269,6 +307,87 @@ def create_bot(
             f"Mention me and describe what you'd like.",
             ephemeral=True,
         )
+
+    # -- native moderation features --------------------------------------- #
+    @bot.tree.command(name="warn", description="Record a persistent warning for a member.")
+    @app_commands.describe(member="Member to warn", reason="Reason recorded in the case history")
+    async def warn(interaction: discord.Interaction, member: discord.Member, reason: str) -> None:
+        actor = interaction.user
+        if interaction.guild is None or not isinstance(actor, discord.Member):
+            await interaction.response.send_message("Guild only.", ephemeral=True)
+            return
+        if not actor.guild_permissions.moderate_members or (member != actor and actor != interaction.guild.owner and actor.top_role <= member.top_role):
+            await interaction.response.send_message("You need **Moderate Members** and must outrank that member.", ephemeral=True)
+            return
+        reason = reason.strip()[:500]
+        if not reason:
+            await interaction.response.send_message("Please provide a reason.", ephemeral=True)
+            return
+        case = warning_store.add(interaction.guild.id, member.id, actor.id, str(actor), reason)
+        settings = settings_store.get(interaction.guild.id)
+        log_channel = interaction.guild.get_channel(settings.log_channel_id) if settings.log_channel_id else None
+        await audit.log(requester=actor, guild=interaction.guild, raw_message=reason, action="warn_member",
+                        arguments={"member_id": member.id, "case_id": case.id}, validation="Moderate Members + hierarchy: allowed",
+                        allowed=True, outcome=f"Warning #{case.id} recorded for {member}.", log_channel=log_channel)
+        await interaction.response.send_message(f"✅ Warning **#{case.id}** recorded for {member.mention}.", ephemeral=True)
+        try:
+            await member.send(f"You received warning #{case.id} in **{interaction.guild.name}**: {reason}")
+        except (discord.Forbidden, discord.HTTPException):
+            pass
+
+    @bot.tree.command(name="warnings", description="View a member's recent warning history.")
+    async def warnings(interaction: discord.Interaction, member: discord.Member) -> None:
+        actor = interaction.user
+        if interaction.guild is None or not isinstance(actor, discord.Member) or not actor.guild_permissions.moderate_members:
+            await interaction.response.send_message("You need **Moderate Members**.", ephemeral=True)
+            return
+        cases = warning_store.list_for(interaction.guild.id, member.id)
+        body = "\n".join(f"**#{c.id}** · {c.created_at[:10]} · {c.moderator_name}\n{c.reason}" for c in cases)
+        await interaction.response.send_message(body or f"No warnings recorded for {member.mention}.", ephemeral=True)
+
+    @bot.tree.command(name="clearwarnings", description="Clear all warnings for a member.")
+    async def clearwarnings(interaction: discord.Interaction, member: discord.Member) -> None:
+        actor = interaction.user
+        if interaction.guild is None or not isinstance(actor, discord.Member) or not actor.guild_permissions.manage_messages:
+            await interaction.response.send_message("You need **Manage Messages**.", ephemeral=True)
+            return
+        count = warning_store.clear(interaction.guild.id, member.id)
+        await interaction.response.send_message(f"✅ Cleared {count} warning(s) for {member.mention}.", ephemeral=True)
+
+    @bot.tree.command(name="lockdown", description="Lock or unlock the current text channel for @everyone.")
+    @app_commands.describe(enabled="True locks the channel; false restores the send-message override")
+    async def lockdown(interaction: discord.Interaction, enabled: bool = True) -> None:
+        actor, guild, channel = interaction.user, interaction.guild, interaction.channel
+        if guild is None or not isinstance(actor, discord.Member) or not actor.guild_permissions.manage_channels:
+            await interaction.response.send_message("You need **Manage Channels**.", ephemeral=True)
+            return
+        if not isinstance(channel, discord.TextChannel):
+            await interaction.response.send_message("This command only works in text channels.", ephemeral=True)
+            return
+        overwrite = channel.overwrites_for(guild.default_role)
+        overwrite.send_messages = False if enabled else None
+        try:
+            await channel.set_permissions(guild.default_role, overwrite=overwrite, reason=f"Lockdown by {actor}")
+        except (discord.Forbidden, discord.HTTPException) as exc:
+            await interaction.response.send_message(f"I couldn't update this channel: {exc}", ephemeral=True)
+            return
+        await audit.log(requester=actor, guild=guild, raw_message="/lockdown", action="lockdown_channel",
+                        arguments={"channel_id": channel.id, "enabled": enabled}, validation="Manage Channels: allowed",
+                        allowed=True, outcome=f"#{channel.name} {'locked' if enabled else 'unlocked'}.",
+                        log_channel=guild.get_channel(settings_store.get(guild.id).log_channel_id or 0))
+        await interaction.response.send_message(f"🔒 {channel.mention} locked." if enabled else f"🔓 {channel.mention} unlocked.", ephemeral=True)
+
+    @bot.tree.command(name="auditsearch", description="Search recent moderation actions in this server.")
+    async def auditsearch(interaction: discord.Interaction, query: str = "") -> None:
+        actor = interaction.user
+        if interaction.guild is None or not isinstance(actor, discord.Member) or not actor.guild_permissions.view_audit_log:
+            await interaction.response.send_message("You need **View Audit Log**.", ephemeral=True)
+            return
+        records = audit.search(guild_id=interaction.guild.id, query=query, limit=10)
+        body = "\n".join(
+            f"{'✅' if r.allowed else '⛔'} `{r.action}` · **{r.requester_name}** · {r.outcome[:120]}" for r in records
+        )
+        await interaction.response.send_message(body or "No matching audit records.", ephemeral=True)
 
     return bot
 
