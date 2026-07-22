@@ -9,6 +9,7 @@ from __future__ import annotations
 
 import argparse
 import logging
+import time
 
 from bot.ai import Agent
 from bot.audit import AuditLogger
@@ -25,21 +26,46 @@ def build_components(config: Config):
 
 
 def run_headless(config: Config) -> None:
+    import discord
+
     from bot.audit import AuditRecord
     from bot.main import BotHooks, create_bot
 
     logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(message)s")
     log = logging.getLogger("moderator")
 
-    audit, settings_store, ratelimiter, agent = build_components(config)
-    audit.subscribe(lambda rec: log.info(rec.summary_line()))
-    hooks = BotHooks(
-        on_ready=lambda user, guilds: log.info("Connected as %s (%d guilds)", user, len(guilds)),
-        on_status=lambda s: log.info(s),
-        on_message_seen=lambda s: log.info("MESSAGE %s", s),
-    )
-    bot = create_bot(config, audit, settings_store, ratelimiter, agent, hooks)
-    bot.run(config.discord_token)
+    restart_delays = (5, 10, 30, 60)
+    crash_count = 0
+
+    while True:
+        audit, settings_store, ratelimiter, agent = build_components(config)
+        audit.subscribe(lambda rec: log.info(rec.summary_line()))
+
+        def ready(user, guilds) -> None:
+            nonlocal crash_count
+            crash_count = 0
+            log.info("Connected as %s (%d guilds)", user, len(guilds))
+
+        hooks = BotHooks(
+            on_ready=ready,
+            on_status=lambda s: log.info(s),
+            on_message_seen=lambda s: log.info("MESSAGE %s", s),
+        )
+        bot = create_bot(config, audit, settings_store, ratelimiter, agent, hooks)
+        try:
+            bot.run(config.discord_token)
+        except discord.LoginFailure:
+            log.exception("Discord login failed; fix DISCORD_TOKEN before restarting.")
+            raise
+        except Exception:
+            delay = restart_delays[min(crash_count, len(restart_delays) - 1)]
+            crash_count += 1
+            log.exception("Bot crashed; restarting in %ss.", delay)
+            time.sleep(delay)
+            # Pick up any configuration repair made while the bot was down.
+            config = Config.load()
+            continue
+        return
 
 
 def main() -> None:

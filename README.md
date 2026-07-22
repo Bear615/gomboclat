@@ -43,6 +43,20 @@ Other modes:
 ./setup.sh --test           # run the unit tests
 ```
 
+### Automatic crash recovery
+
+All launch modes automatically recover from an unexpected bot crash. The TUI
+and browser hub rebuild the Discord client without taking down the control hub;
+headless mode restarts the bot loop. Retries use a bounded backoff of 5, 10, 30,
+then 60 seconds (remaining at 60 seconds for a continuing crash streak), and the
+delay resets after a successful Discord connection.
+
+Manual **Stop**, a clean shutdown, and the deliberate `!startweb` handoff do not
+restart. Invalid Discord credentials also stop with a clear error instead of
+retrying forever. The installed web service still uses systemd's
+`Restart=on-failure` as an additional safeguard if the whole control-hub process
+exits.
+
 The script creates a `.venv`, installs everything from `requirements.txt`,
 copies `.env.example` → `.env` on first run, and launches the bot.
 

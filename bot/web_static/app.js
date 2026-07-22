@@ -36,7 +36,7 @@ async function api(url, options = {}) {
 
 function renderStatus(data) {
   const live = data.connected && data.state === 'running';
-  const working = ['running', 'starting', 'stopping'].includes(data.state);
+  const working = ['running', 'starting', 'restarting', 'stopping'].includes(data.state);
   $('#sideState').textContent = data.state;
   $('#sideDot').className = live ? 'online' : working ? 'pending' : '';
   $('#heroDot').className = live ? 'online' : working ? 'pending' : '';

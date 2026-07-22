@@ -80,7 +80,7 @@ class WebHub:
         self._log("audit", f"{verdict}: {record.action} requested by {record.requester_name}")
 
     def _state(self, state: str, error: str) -> None:
-        if state in (control.STOPPED, control.ERROR):
+        if state in (control.STOPPED, control.ERROR, control.RESTARTING):
             self.connected = False
             self.user, self.guilds = "—", []
         self._log("error" if error else "lifecycle", f"Bot {state}" + (f": {error}" if error else ""))
