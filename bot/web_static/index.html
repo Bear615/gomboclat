@@ -1,10 +1,71 @@
-<!doctype html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
-<title>Sentinel Control</title><link rel="stylesheet" href="/static/style.css"></head><body>
-<aside><div class="brand"><span>G</span><b>GOMBOCLAT</b></div><nav><button class="active" data-page="dashboard">⌁ <em>Overview</em></button><button data-page="configure">⚙ <em>Configuration</em></button><button data-page="maintenance">↻ <em>Maintenance</em></button></nav><div class="aside-foot"><i id="sideDot"></i><div><small>BOT STATUS</small><strong id="sideState">Offline</strong></div></div></aside>
-<main><header><div><small>CONTROL CENTER / <span id="crumb">OVERVIEW</span></small><h1 id="title">Good evening, Operator.</h1></div><div class="live"><i></i> LIVE CONSOLE</div></header>
-<section id="dashboard" class="page active"><div class="hero"><div><span class="eyebrow">SYSTEM HEALTH</span><h2><i id="heroDot"></i><span id="heroState">Bot offline</span></h2><p id="identity">Waiting for a Discord connection.</p></div><div class="actions"><button onclick="bot('start')" class="primary">▶ Start bot</button><button onclick="bot('restart')">↻ Restart</button><button onclick="bot('stop')" class="danger">■ Stop</button></div></div>
-<div class="stats"><article><small>CONNECTED SERVERS</small><strong id="guildCount">0</strong><span id="guildNames">No guilds connected</span></article><article><small>ACTIVE MODEL</small><strong id="model">—</strong><span id="endpoint">OpenAI compatible</span></article><article><small>RATE LIMIT</small><strong id="rate">—</strong><span>write actions per user</span></article><article><small>SAFETY MODE</small><strong id="safety">—</strong><span>typed confirmation guard</span></article></div>
-<div class="grid"><article class="panel audit"><div class="panel-head"><div><small>AUDIT STREAM</small><h3>Recent moderation activity</h3></div><span class="pulse">● LIVE</span></div><div id="audit"></div></article><article class="panel console"><div class="panel-head"><div><small>RUNTIME</small><h3>System log</h3></div></div><pre id="activity"></pre></article></div></section>
-<section id="configure" class="page"><div class="pagehead"><div><span class="eyebrow">ENVIRONMENT</span><h2>Configuration</h2><p>Changes are stored in <code>.env</code>. Empty secret fields preserve their current value.</p></div><button class="primary" onclick="save(false)">Save changes</button></div><form id="configForm"><fieldset><legend>Connection secrets</legend><label>Discord token<input type="password" name="discord_token" placeholder="Leave blank to keep saved token"></label><label>API key<input type="password" name="api_key" placeholder="Leave blank to keep saved key"></label></fieldset><fieldset><legend>Intelligence provider</legend><label>API base URL<input name="api_base_url"></label><label>Model<input name="model"></label><label>Max tokens<input type="number" name="max_tokens"></label><label>Agent iterations<input type="number" name="max_agent_iterations"></label></fieldset><fieldset><legend>Safety & limits</legend><label>Max writes<input type="number" name="rate_limit_max"></label><label>Window, seconds<input type="number" name="rate_limit_window"></label><label>Bulk threshold<input type="number" name="bulk_confirm_threshold"></label><label class="toggle">Enable punitive tools<input type="checkbox" name="enable_punitive"></label></fieldset><fieldset><legend>Updates</legend><label class="toggle">Automatic updates<input type="checkbox" name="auto_update"></label><label>Interval, minutes<input type="number" name="auto_update_interval"></label><label class="toggle">Restart after update<input type="checkbox" name="auto_restart"></label></fieldset></form><div class="savebar"><button onclick="save(false)">Save to .env</button><button class="primary" onclick="save(true)">Save & restart</button></div></section>
-<section id="maintenance" class="page"><div class="pagehead"><div><span class="eyebrow">OPERATIONS</span><h2>Maintenance</h2><p>Manage dependencies and deploy upstream updates without leaving the hub.</p></div></div><div class="maint-grid"><button onclick="maint('install')"><b>↓</b><span><strong>Install dependencies</strong><small>Upgrade packages from requirements.txt</small></span></button><button onclick="maint('reinstall')"><b>↯</b><span><strong>Clean reinstall</strong><small>Force a fresh dependency installation</small></span></button><button onclick="maint('check')"><b>⌕</b><span><strong>Check upstream</strong><small>Fetch and compare the current branch</small></span></button><button onclick="maint('update')"><b>↻</b><span><strong>Update & restart</strong><small>Fast-forward, install, and relaunch</small></span></button></div><article class="panel output"><div class="panel-head"><h3>Operation output</h3></div><pre id="maintOutput">Select an operation to begin.</pre></article></section>
-</main><div id="toast"></div><script src="/static/app.js"></script></body></html>
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="color-scheme" content="dark">
+  <title>Gomboclat Control Hub</title>
+  <link rel="stylesheet" href="/static/style.css">
+</head>
+<body>
+  <aside class="sidebar">
+    <a class="brand" href="#overview" aria-label="Gomboclat home"><span class="brand-mark">G</span><span>GOMBOCLAT<small>MODERATOR OPS</small></span></a>
+    <nav aria-label="Dashboard sections">
+      <button class="active" data-page="dashboard"><span>⌁</span><em>Overview</em></button>
+      <button data-page="configure"><span>⌘</span><em>Configuration</em></button>
+      <button data-page="maintenance"><span>↻</span><em>Maintenance</em></button>
+    </nav>
+    <div class="sidebar-status"><i id="sideDot"></i><div><small>BOT STATUS</small><strong id="sideState">Stopped</strong></div></div>
+  </aside>
+
+  <main>
+    <header class="topbar">
+      <div><small>CONTROL HUB <b>/</b> <span id="crumb">OVERVIEW</span></small><h1 id="title">Command the calm.</h1></div>
+      <div class="top-actions"><span class="local-pill">● LOCALHOST ONLY</span><span id="clock">--:-- UTC</span></div>
+    </header>
+
+    <section id="dashboard" class="page active">
+      <div id="setupBanner" class="setup-banner hidden"><div><strong>Finish one-time setup</strong><p>Add the missing credentials, save, and the hub can start your bot.</p></div><button data-go="configure">Configure now →</button></div>
+      <div class="hero">
+        <div><span class="eyebrow">SYSTEM HEALTH</span><h2><i id="heroDot"></i><span id="heroState">Bot stopped</span></h2><p id="identity">Waiting for a Discord connection.</p></div>
+        <div class="actions"><button data-bot="start" class="primary">▶ Start bot</button><button data-bot="restart">↻ Restart</button><button data-bot="stop" class="danger">■ Stop</button></div>
+      </div>
+      <div class="stats">
+        <article><small>CONNECTED SERVERS</small><strong id="guildCount">0</strong><span id="guildNames">No guilds connected</span></article>
+        <article><small>ACTIVE MODEL</small><strong id="model">—</strong><span id="endpoint">OpenAI compatible</span></article>
+        <article><small>RATE LIMIT</small><strong id="rate">—</strong><span>write actions per user</span></article>
+        <article><small>SAFETY MODE</small><strong id="safety">—</strong><span>typed confirmation guard</span></article>
+      </div>
+      <div class="dashboard-grid">
+        <article class="panel audit-panel"><div class="panel-head"><div><small>AUDIT STREAM</small><h3>Recent moderation activity</h3></div><span class="pulse">● LIVE</span></div><div id="audit" class="scroll-region"></div></article>
+        <article class="panel console-panel"><div class="panel-head"><div><small>RUNTIME</small><h3>System log</h3></div><button id="clearActivity" class="text-button">Clear</button></div><div id="activity" class="scroll-region console-lines"></div></article>
+      </div>
+    </section>
+
+    <section id="configure" class="page">
+      <div class="pagehead"><div><span class="eyebrow">ENVIRONMENT</span><h2>Configuration</h2><p>Every control from the terminal dashboard, stored locally in <code>.env</code>.</p></div><button class="primary" data-save="false">Save changes</button></div>
+      <form id="configForm">
+        <fieldset><legend><span>01</span> Connection secrets</legend><p>Secrets are write-only. Leave a field empty to preserve its saved value.</p><label>Discord bot token<input autocomplete="off" type="password" name="discord_token" placeholder="Leave blank to keep saved token"></label><label>Provider API key<input autocomplete="off" type="password" name="api_key" placeholder="Leave blank to keep saved key"></label></fieldset>
+        <fieldset><legend><span>02</span> Intelligence provider</legend><p>Any OpenAI-compatible chat completions endpoint is supported.</p><label>API base URL<input type="url" name="api_base_url" required></label><div class="field-row"><label>Model<input name="model" required></label><label>Max tokens<input type="number" min="1" name="max_tokens" required></label></div><label>Maximum agent iterations<input type="number" min="1" name="max_agent_iterations" required></label></fieldset>
+        <fieldset><legend><span>03</span> Safety & limits</legend><p>Deterministic permission checks remain enforced regardless of these values.</p><div class="field-row"><label>Max writes<input type="number" min="1" name="rate_limit_max" required></label><label>Window (seconds)<input type="number" min="1" name="rate_limit_window" required></label></div><label>Bulk confirmation threshold<input type="number" min="1" name="bulk_confirm_threshold" required></label><label class="toggle"><span><strong>Enable punitive tools</strong><small>Ban, kick, and timeout still require typed confirmation.</small></span><input type="checkbox" name="enable_punitive" role="switch"></label></fieldset>
+        <fieldset><legend><span>04</span> Automatic updates</legend><p>Periodically fast-forward from the configured Git upstream.</p><label class="toggle"><span><strong>Automatic updates</strong><small>Check upstream and install new dependencies.</small></span><input type="checkbox" name="auto_update" role="switch"></label><label>Check interval (minutes)<input type="number" min="1" name="auto_update_interval" required></label><label class="toggle"><span><strong>Restart after update</strong><small>Apply pulled changes to an active bot immediately.</small></span><input type="checkbox" name="auto_restart" role="switch"></label></fieldset>
+      </form>
+      <div class="savebar"><span id="saveHint">Changes require a restart to affect a running bot.</span><div><button data-save="false">Save to .env</button><button class="primary" data-save="true">Save & restart</button></div></div>
+    </section>
+
+    <section id="maintenance" class="page">
+      <div class="pagehead"><div><span class="eyebrow">OPERATIONS</span><h2>Maintenance</h2><p>Manage the active Python environment and upstream deployment.</p></div><div id="repoBadge" class="repo-badge">Repository · loading</div></div>
+      <div class="repo-strip"><div><small>BRANCH</small><strong id="repoBranch">—</strong></div><div><small>LOCAL COMMIT</small><strong id="repoCommit">—</strong></div><div><small>UPSTREAM</small><strong id="repoState">Not checked</strong></div></div>
+      <div class="maint-grid">
+        <button data-maint="install"><b>↓</b><span><strong>Install dependencies</strong><small>Upgrade packages from requirements.txt</small></span></button>
+        <button data-maint="reinstall"><b>↯</b><span><strong>Force reinstall</strong><small>Fresh install without the package cache</small></span></button>
+        <button data-maint="check"><b>⌕</b><span><strong>Check upstream</strong><small>Fetch and compare the tracked branch</small></span></button>
+        <button data-maint="update"><b>↻</b><span><strong>Update & restart</strong><small>Fast-forward, install, and relaunch the bot</small></span></button>
+      </div>
+      <article class="panel output"><div class="panel-head"><div><small>TERMINAL</small><h3>Operation output</h3></div><span id="maintState">IDLE</span></div><pre id="maintOutput">Select an operation to begin.</pre></article>
+    </section>
+  </main>
+  <div id="toast" role="status" aria-live="polite"></div>
+  <script src="/static/app.js"></script>
+</body>
+</html>
