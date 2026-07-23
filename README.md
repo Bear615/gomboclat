@@ -138,9 +138,10 @@ Three tabs:
 **⚙ Configure**
 - Edit **every** setting — Discord token, your **API endpoint** (base URL),
   **API key**, and **model** (OpenAI style), max tokens, agent iterations, rate
-  limit + window, bulk-confirm threshold, punitive toggle, and the auto-update
-  options — then **Save to .env** (or **Save & restart bot**). Secrets are masked;
-  leaving a secret box blank keeps the existing value.
+  limit + window, bulk-confirm threshold, punitive toggle, full-member-cache
+  toggle, and the auto-update options — then **Save to .env** (or **Save &
+  restart bot**). Secrets are masked; leaving a secret box blank keeps the
+  existing value.
 
 **⛭ Maintenance**
 - **Install / Reinstall dependencies** (pip, into the active venv) with streamed output.
@@ -240,9 +241,13 @@ also available to the conversational bot through permission-checked AI tools:
 `http://127.0.0.1:8765`. It deliberately binds to localhost. The Overview page
 provides live lifecycle controls, connection and guild state, safety metrics,
 the audit stream, and runtime messages. Configuration covers every setting in
-the TUI (with write-only secret inputs), while Maintenance supports dependency
-installation, update checks, and update/restart. The page polls the local API so
-bot state and audit activity update without a reload.
+the TUI, including arbitrary OpenAI-compatible endpoints and the low-memory
+member-cache toggle. Secret inputs are write-only, but the page clearly reports
+whether each secret is saved. The browser and TUI share the same repository-root
+`.env`; if the TUI changes it while the browser has unsaved edits, the browser
+warns before allowing an overwrite. Maintenance supports dependency installation,
+update checks, and update/restart with live output. A bounded server-sent event
+stream updates state and activity immediately, with periodic polling as a fallback.
 
 ### One-time public HTTPS deployment
 
@@ -343,16 +348,21 @@ and are set at runtime via slash commands.
 | `OPENAI_API_KEY` | — | API key for your endpoint (required; any placeholder for keyless local servers) |
 | `OPENAI_BASE_URL` | `https://api.openai.com/v1` | OpenAI-compatible endpoint (OpenRouter, Groq, LM Studio, Ollama, vLLM, …) |
 | `OPENAI_MODEL` | `gpt-4o-mini` | Parser model — any model your endpoint serves |
+| `MAX_TOKENS` | `2048` | Maximum completion tokens per model response |
+| `MAX_AGENT_ITERATIONS` | `8` | Maximum tool-call turns in one request |
 | `RATE_LIMIT_MAX` | `5` | Write actions per window per user |
 | `RATE_LIMIT_WINDOW` | `60` | Rate-limit window (seconds) |
 | `BULK_CONFIRM_THRESHOLD` | `3` | Writes-per-turn that trigger a confirmation |
 | `ENABLE_PUNITIVE` | `true` | Enable ban/kick/timeout (still typed-CONFIRM gated) |
+| `CACHE_MEMBERS` | `false` | Opt into Discord's full member cache (higher memory use) |
 | `DB_PATH` | `moderator.db` | SQLite file for audit log + settings |
 | `AUTO_UPDATE` | `false` | Periodically pull + reinstall from the git upstream |
 | `AUTO_UPDATE_INTERVAL` | `30` | Minutes between update checks |
 | `AUTO_RESTART` | `false` | Restart the bot automatically after an auto-update |
 
-All of these are editable live from the TUI's **Configure** tab.
+All operational values above except `DB_PATH` are editable from both control
+hubs. `DB_PATH` remains a manual setting because changing the live persistence
+store requires restarting the entire control-hub process.
 
 Model choice affects parsing quality/UX, **not** security — the code enforces
 safety regardless of model.

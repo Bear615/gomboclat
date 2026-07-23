@@ -210,6 +210,7 @@ class ModeratorHub(App):
                 yield from self._field("Rate limit: window (s)", Input(id="cfg-rate_limit_window"))
                 yield from self._field("Bulk-confirm threshold", Input(id="cfg-bulk_confirm_threshold"))
                 yield from self._field("Punitive tools (ban/kick/timeout)", Switch(id="cfg-enable_punitive"))
+                yield from self._field("Cache all Discord members", Switch(id="cfg-cache_members"))
             with Vertical(classes="section", id="sec-update"):
                 yield from self._field("Auto-update from GitHub", Switch(id="cfg-auto_update"))
                 yield from self._field("Update check interval (min)", Input(id="cfg-auto_update_interval"))
@@ -411,7 +412,7 @@ class ModeratorHub(App):
         "max_agent_iterations", "rate_limit_max", "rate_limit_window",
         "bulk_confirm_threshold", "auto_update_interval",
     ]
-    _SWITCH_FIELDS = ["enable_punitive", "auto_update", "auto_restart"]
+    _SWITCH_FIELDS = ["enable_punitive", "cache_members", "auto_update", "auto_restart"]
     # Masked secrets: never pre-fill the box from a live value, and never
     # overwrite the stored value when the box is left blank.
     _SECRET_FIELDS = ["discord_token", "api_key"]
@@ -434,6 +435,7 @@ class ModeratorHub(App):
         for field in self._INPUT_FIELDS:
             self.query_one(f"#cfg-{field}", Input).value = values[field]
         self.query_one("#cfg-enable_punitive", Switch).value = c.enable_punitive
+        self.query_one("#cfg-cache_members", Switch).value = c.cache_members
         self.query_one("#cfg-auto_update", Switch).value = c.auto_update
         self.query_one("#cfg-auto_restart", Switch).value = c.auto_restart
 
@@ -457,6 +459,7 @@ class ModeratorHub(App):
                 continue  # don't wipe a secret with an empty box
             updates[key] = val
         updates["ENABLE_PUNITIVE"] = str(self.query_one("#cfg-enable_punitive", Switch).value).lower()
+        updates["CACHE_MEMBERS"] = str(self.query_one("#cfg-cache_members", Switch).value).lower()
         updates["AUTO_UPDATE"] = str(self.query_one("#cfg-auto_update", Switch).value).lower()
         updates["AUTO_RESTART"] = str(self.query_one("#cfg-auto_restart", Switch).value).lower()
 
@@ -604,6 +607,7 @@ class StatusPanel(Static):
             f"  Model       {config.model or '[dim]not set[/]'}",
             f"  Rate limit  {config.rate_limit_max} writes / {config.rate_limit_window}s",
             f"  Punitive    {'[yellow]on[/] (typed CONFIRM)' if config.enable_punitive else '[dim]off[/]'}",
+            f"  Members     {'[yellow]full cache[/]' if config.cache_members else '[dim]low-memory[/]'}",
             f"  Updates     {auto}",
         ]
         if secrets:
